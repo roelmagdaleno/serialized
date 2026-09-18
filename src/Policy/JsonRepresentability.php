@@ -12,7 +12,7 @@ use Serialized\Tokenizer\TokenType;
  * Rejects values that are valid in PHP but have no JSON equivalent.
  *
  * Checked on the token stream rather than after unserializing, so the exception can
- * name the byte at fault — and so json_encode() is never the thing that fails.
+ * name the byte at fault — and so `json_encode()` is never the thing that fails.
  */
 final class JsonRepresentability
 {

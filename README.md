@@ -1,4 +1,4 @@
-# serialized
+# Serialized
 
 Convert PHP serialized data into pretty-printed JSON — safely, with error messages you can act on.
 

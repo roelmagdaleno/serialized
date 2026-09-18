@@ -16,10 +16,10 @@ final class JsonEncoder
     /**
      * Encodes an unserialized value as JSON using the configured flags.
      *
-     * JSON_THROW_ON_ERROR is forced on: without it json_encode() signals failure by
-     * returning false, which would hand the caller a value instead of an exception.
+     * JSON_THROW_ON_ERROR is forced on: without it `json_encode()` signals failure by
+     * returning `false`, which would hand the caller a value instead of an exception.
      *
-     * @throws JsonEncodingException when json_encode() rejects the value
+     * @throws JsonEncodingException when `json_encode()` rejects the value
      */
     public function encode(mixed $value, Options $options): string
     {

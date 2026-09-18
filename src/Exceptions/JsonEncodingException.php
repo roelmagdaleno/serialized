@@ -9,13 +9,13 @@ use RuntimeException;
 use Serialized\Diagnostics\Diagnostic;
 
 /**
- * Validation should catch everything json_encode() rejects, so this is a backstop
+ * Validation should catch everything `json_encode()` rejects, so this is a backstop
  * rather than a path callers are expected to hit.
  */
 final class JsonEncodingException extends RuntimeException implements SerializedException
 {
     /**
-     * json_encode() rejected a value that validation was expected to have caught.
+     * `json_encode()` rejected a value that validation was expected to have caught.
      */
     public static function encodingFailed(JsonException $previous): self
     {
