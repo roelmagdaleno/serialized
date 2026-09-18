@@ -36,13 +36,16 @@ the suite. Do not work around either one.
 - **Descriptive names, full words.** `$declaredByteLength`, not `$len`.
   `rejectDisallowedClasses()`, not `check()`. A name that needs a comment is the wrong name.
 - **Readable over clever.** Guard clauses over nesting; early returns; small methods.
-- **Comments are concise and explain *why*, never *what*.** One line where one line does. No
-  changelog comments — no "changed X", "was Y", "added in 1.2", no commented-out old code, no
-  dates or author names. Git history records what changed; the comment records why the code is
-  the way it is. If nothing non-obvious needs saying, write no comment.
+- **Every method gets a docblock**, including private ones and named constructors. One concise
+  sentence saying what it does, then a second only where the *why* is not obvious from the code.
+- **Comments are concise.** One line where one line does. No changelog comments — no "changed X",
+  "was Y", "added in 1.2", no commented-out old code, no dates or author names. Git history
+  records what changed; the comment records what the code does and why it is the way it is.
+- Inline comments inside a method body are for the non-obvious only — a security consequence, a
+  format quirk, a deliberate deviation. Never narrate the next line.
 - Exception messages are built by named constructors on the exception
   (`InvalidSerializedDataException::lengthMismatch(...)`), never assembled at the throw site.
-- Docblocks only for what the signature cannot say (array shapes, `list<class-string>`).
+- Docblocks also carry what the signature cannot say (array shapes, `list<class-string>`).
 
 ## Security rules (non-negotiable)
 

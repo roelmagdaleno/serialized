@@ -195,9 +195,17 @@ can `catch (SerializedException $e)` for everything, or narrow to one case.
 | `LimitExceededException` | `maxBytes`, `maxDepth`, or `maxElements` exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation (should be unreachable; wraps `JsonException`) |
 
-Every exception carries a `Diagnostic` value object — `offset`, `reason`, `fix`, and the
-surrounding fragment — rendered into the message by a shared `SnippetRenderer`, and readable
+Every exception carries a `Diagnostic` value object — the `payload`, the byte `offset`, the
+`reason` and the `fix` — rendered into the message by a shared `SnippetRenderer`, and readable
 programmatically via `$e->diagnostic()` so unserialize.dev can highlight the exact byte.
+
+`SerializedException::diagnostic()` returns `?Diagnostic`, because `JsonEncodingException` cannot
+trace its failure to a byte. Every other exception narrows the return type to `Diagnostic` and
+takes one in a private constructor, so catching a specific exception never needs a null check.
+
+The rendered snippet is always pure ASCII — unprintable bytes become `\xNN` escapes, the
+truncation marker is `...` — so a byte offset into the snippet is also its display column, in any
+terminal and any encoding.
 
 ```
 Serialized\Exceptions\InvalidSerializedDataException
@@ -253,11 +261,13 @@ src/
     JsonEncoder.php                       Wraps json_encode() + flag handling
 
   Diagnostics/
-    Diagnostic.php                        readonly: offset, reason, fix, fragment
+    Diagnostic.php                        readonly: payload, offset, reason, fix
     SnippetRenderer.php                   Renders the caret snippet shown above
+    DiagnosticMessage.php                 Assembles reason + snippet + fix into the message
 
   Exceptions/
-    SerializedException.php               interface
+    SerializedException.php               interface: diagnostic(): ?Diagnostic
+    CarriesDiagnostic.php                 trait: private constructor + narrowed diagnostic()
     InvalidSerializedDataException.php
     UnsafeSerializedDataException.php
     UnrepresentableValueException.php
@@ -341,9 +351,10 @@ enum TokenType: string
   the allowed-class decision lives in exactly one place (`ClassAllowList`).
 - Exception messages are built by the exception's own named constructors
   (`InvalidSerializedDataException::lengthMismatch(...)`), never assembled at the throw site.
-- Comments are concise and explain *why*, never *what*. No changelog comments — no "changed X",
-  "was Y", "added in 1.2", no commented-out code, no dates or author names. Git history records
-  what changed. If nothing non-obvious needs saying, write no comment.
+- Every method carries a docblock — one concise sentence on what it does, plus the *why* when the
+  code does not make it obvious. Private methods and named constructors included.
+- Comments are concise. No changelog comments — no "changed X", "was Y", "added in 1.2", no
+  commented-out code, no dates or author names. Inline comments are for the non-obvious only.
 
 ## Testing Strategy
 

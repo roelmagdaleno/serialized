@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Keep the published package to what a consumer actually needs.
+/.gitattributes    export-ignore
+/.gitignore        export-ignore
+/.claude           export-ignore
+/tasks             export-ignore
+/tests             export-ignore
+/phpunit.xml       export-ignore
+/phpstan.neon      export-ignore
+/CLAUDE.md         export-ignore
+/SPEC.md           export-ignore
