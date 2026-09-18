@@ -1,0 +1,40 @@
+{
+    "name": "roelmagdaleno/serialized",
+    "version": "1.0.0",
+    "keywords": [
+        "json",
+        "serialized",
+        "unserialize"
+    ],
+    "authors": [
+        {
+            "name": "Roel Magdaleno",
+            "email": "roelmagdaleno@gmail.com"
+        }
+    ],
+    "require-dev": {
+        "pestphp/pest": "^5.2",
+        "laravel/pao": "^1.1",
+        "laravel/pint": "^1.32",
+        "phpstan/phpstan": "^2.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Serialized\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "./vendor/bin/pest",
+        "pint": "./vendor/bin/pint"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
