@@ -1,0 +1,29 @@
+{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/php-quality.sh",
+                        "timeout": 120,
+                        "statusMessage": "Pint"
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/gate-tests.sh",
+                        "timeout": 300,
+                        "statusMessage": "Running the suite"
+                    }
+                ]
+            }
+        ]
+    }
+}
