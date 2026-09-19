@@ -10,8 +10,10 @@ use Serialized\Conversion\ValueNormalizer;
 use Serialized\Exceptions\SerializedException;
 use Serialized\Parser\ParsedPayload;
 use Serialized\Parser\Parser;
+use Serialized\Policy\ClassAllowList;
 use Serialized\Policy\PayloadPolicy;
 use Serialized\Tokenizer\Tokenizer;
+use Serialized\Tokenizer\TokenType;
 use Throwable;
 
 /**
@@ -71,7 +73,10 @@ final readonly class SerializedConverter
     {
         $this->validate($payload);
 
-        return $this->unserializer->unserialize($payload, $this->options->allowedClasses);
+        return $this->unserializer->unserialize(
+            $payload,
+            new ClassAllowList($this->options->allowedClasses)->normalizedClassNames(),
+        );
     }
 
     /**
@@ -169,10 +174,50 @@ final readonly class SerializedConverter
     {
         $this->policy->enforceByteLimit($payload, $this->options);
 
-        $tokens = $this->tokenizer->tokenize($payload);
+        return $this->validateValue($payload, 0, strlen($payload), depthSpent: 0, elementsSpent: 0);
+    }
+
+    /**
+     * Validates the one value filling a byte range, then every body nested inside it.
+     *
+     * A custom-serialized body is itself a serialized payload that unserialize() hands
+     * to the class, so it goes through the same three stages rather than being trusted
+     * for being opaque.
+     *
+     * @throws SerializedException when any stage rejects the value
+     */
+    private function validateValue(
+        string $payload,
+        int $from,
+        int $through,
+        int $depthSpent,
+        int $elementsSpent,
+    ): ParsedPayload {
+        $tokens = $this->tokenizer->tokenize(
+            $payload,
+            $from,
+            $through,
+            maxElements: $this->options->maxElements - $elementsSpent,
+        );
         $parsed = $this->parser->parse($payload, $tokens);
 
-        $this->policy->enforce($payload, $tokens, $parsed, $this->options);
+        $this->policy->enforce($payload, $tokens, $parsed, $this->options, $depthSpent, $elementsSpent);
+
+        foreach ($tokens as $token) {
+            if ($token->type !== TokenType::CustomObject) {
+                continue;
+            }
+
+            $bodyStart = $token->literalOffset ?? $token->offset;
+
+            $elementsSpent += $this->validateValue(
+                $payload,
+                $bodyStart,
+                $bodyStart + ($token->literalLength ?? 0),
+                depthSpent: $depthSpent + $parsed->depth,
+                elementsSpent: $elementsSpent + $parsed->elementCount,
+            )->elementCount;
+        }
 
         return $parsed;
     }

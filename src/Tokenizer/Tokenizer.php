@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Serialized\Tokenizer;
 
 use Serialized\Exceptions\InvalidSerializedDataException;
+use Serialized\Exceptions\LimitExceededException;
 
 /**
  * Lexes a serialized payload into a flat stream of tokens.
@@ -16,26 +17,50 @@ use Serialized\Exceptions\InvalidSerializedDataException;
 final class Tokenizer
 {
     /**
-     * Lexes the whole payload, left to right.
+     * Lexes a byte range of the payload, left to right.
      *
+     * The range defaults to the whole payload. A custom-serialized body is lexed in
+     * place instead of as a string of its own, so every offset a diagnostic reports is
+     * a byte of the payload the caller passed rather than of a slice they never saw.
+     *
+     * Elements are counted as they are lexed and the ceiling stops the loop, because a
+     * Token costs far more memory than the bytes it was read from: counting them only
+     * once the stream is complete makes a payload well under maxBytes an out-of-memory
+     * kill rather than a limit. Closing braces are not elements, which is what keeps this
+     * count the same one the parser reports.
+     *
+     * @param  int|null  $through  byte position to stop at, null for the end of the payload
+     * @param  int|null  $maxElements  how many elements may still be lexed, null for no ceiling
      * @return list<Token>
      *
-     * @throws InvalidSerializedDataException when any token is malformed
+     * @throws InvalidSerializedDataException when any token is malformed or overruns the range
+     * @throws LimitExceededException when the range holds more elements than the ceiling allows
      */
-    public function tokenize(string $payload): array
+    public function tokenize(string $payload, int $from = 0, ?int $through = null, ?int $maxElements = null): array
     {
-        if ($payload === '') {
+        $end = $through ?? strlen($payload);
+
+        if ($from >= $end) {
             throw InvalidSerializedDataException::emptyPayload();
         }
 
         $tokens = [];
-        $cursor = 0;
-        $payloadLength = strlen($payload);
+        $cursor = $from;
+        $elements = 0;
 
-        while ($cursor < $payloadLength) {
+        while ($cursor < $end) {
             $token = $this->readToken($payload, $cursor);
+
+            if ($token->type !== TokenType::Close && $maxElements !== null && ++$elements > $maxElements) {
+                throw LimitExceededException::elementCeiling($payload, $maxElements);
+            }
+
             $tokens[] = $token;
             $cursor = $token->endOffset();
+        }
+
+        if ($cursor > $end) {
+            throw InvalidSerializedDataException::valueOverrunsDeclaredLength($payload, $end);
         }
 
         return $tokens;
@@ -58,7 +83,7 @@ final class Tokenizer
             'R' => $this->readScalar($payload, $offset, TokenType::Reference, $this->isValidInteger(...)),
             'r' => $this->readScalar($payload, $offset, TokenType::ValueReference, $this->isValidInteger(...)),
             'E' => $this->readEnum($payload, $offset),
-            '}' => new Token(TokenType::Close, $offset, '}'),
+            '}' => new Token(TokenType::Close, $payload, $offset, length: 1),
             default => throw InvalidSerializedDataException::unknownTypePrefix($payload, $offset),
         };
     }
@@ -70,7 +95,7 @@ final class Tokenizer
     {
         $this->expectByte($payload, $offset + 1, ';');
 
-        return new Token(TokenType::Null, $offset, 'N;');
+        return new Token(TokenType::Null, $payload, $offset, length: 2);
     }
 
     /**
@@ -94,10 +119,11 @@ final class Tokenizer
 
         return new Token(
             $type,
+            $payload,
             $offset,
-            substr($payload, $offset, $terminator + 1 - $offset),
-            $literal,
+            length: $terminator + 1 - $offset,
             literalOffset: $literalStart,
+            literalLength: $terminator - $literalStart,
         );
     }
 
@@ -142,11 +168,11 @@ final class Tokenizer
 
         return new Token(
             TokenType::String,
+            $payload,
             $offset,
-            substr($payload, $offset, $closingQuote + 2 - $offset),
-            substr($payload, $valueStart, $declaredLength),
-            $declaredLength,
+            length: $closingQuote + 2 - $offset,
             literalOffset: $valueStart,
+            literalLength: $declaredLength,
         );
     }
 
@@ -164,22 +190,15 @@ final class Tokenizer
         $countEnd = $this->findSequence($payload, ':', $countStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
-        $declaredCount = $this->readUnsignedInteger($payload, $countStart, $countEnd);
-
-        if ($declaredCount === null) {
-            throw InvalidSerializedDataException::malformedElementCount(
-                $payload,
-                $countStart,
-                substr($payload, $countStart, $countEnd - $countStart),
-            );
-        }
-
         $this->expectByte($payload, $countEnd + 1, '{');
+
+        $declaredCount = $this->readDeclaredCount($payload, $countStart, $countEnd);
 
         return new Token(
             TokenType::Array,
+            $payload,
             $offset,
-            substr($payload, $offset, $countEnd + 2 - $offset),
+            length: $countEnd + 2 - $offset,
             declaredCount: $declaredCount,
         );
     }
@@ -197,22 +216,15 @@ final class Tokenizer
         $countEnd = $this->findSequence($payload, ':', $countStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
-        $declaredCount = $this->readUnsignedInteger($payload, $countStart, $countEnd);
-
-        if ($declaredCount === null) {
-            throw InvalidSerializedDataException::malformedElementCount(
-                $payload,
-                $countStart,
-                substr($payload, $countStart, $countEnd - $countStart),
-            );
-        }
-
         $this->expectByte($payload, $countEnd + 1, '{');
+
+        $declaredCount = $this->readDeclaredCount($payload, $countStart, $countEnd);
 
         return new Token(
             TokenType::Object,
+            $payload,
             $offset,
-            substr($payload, $offset, $countEnd + 2 - $offset),
+            length: $countEnd + 2 - $offset,
             declaredCount: $declaredCount,
             className: $className,
         );
@@ -251,9 +263,11 @@ final class Tokenizer
 
         return new Token(
             TokenType::CustomObject,
+            $payload,
             $offset,
-            substr($payload, $offset, $bodyStart + $declaredLength + 1 - $offset),
-            substr($payload, $bodyStart, $declaredLength),
+            length: $bodyStart + $declaredLength + 1 - $offset,
+            literalOffset: $bodyStart,
+            literalLength: $declaredLength,
             className: $className,
         );
     }
@@ -274,11 +288,12 @@ final class Tokenizer
 
         return new Token(
             TokenType::Enum,
+            $payload,
             $offset,
-            substr($payload, $offset, $afterCaseName + 1 - $offset),
-            $caseName,
-            className: $separator === false ? $caseName : substr($caseName, 0, $separator),
+            length: $afterCaseName + 1 - $offset,
             literalOffset: $afterCaseName - 1 - strlen($caseName),
+            literalLength: strlen($caseName),
+            className: $separator === false ? $caseName : substr($caseName, 0, $separator),
         );
     }
 
@@ -313,6 +328,39 @@ final class Tokenizer
         }
 
         return [substr($payload, $nameStart, $declaredLength), $closingQuote + 1];
+    }
+
+    /**
+     * Parses the pair count an array or object header declares.
+     *
+     * Called once the opening brace is known to be there, so the bytes that remain are
+     * the bytes the contents could use. A count larger than that is refused rather than
+     * carried forward: the cast saturates at PHP_INT_MAX, which the parser then doubles into a
+     * float and cannot store. The bound is deliberately the loosest one that holds — a
+     * pair cannot occupy less than a byte — so that a count which is merely wrong still
+     * reaches the parser, which knows how many pairs the structure really has.
+     */
+    private function readDeclaredCount(string $payload, int $countStart, int $countEnd): int
+    {
+        $literal = substr($payload, $countStart, $countEnd - $countStart);
+        $declaredCount = $this->readUnsignedInteger($payload, $countStart, $countEnd);
+
+        if ($declaredCount === null) {
+            throw InvalidSerializedDataException::malformedElementCount($payload, $countStart, $literal);
+        }
+
+        $remainingBytes = strlen($payload) - ($countEnd + 2);
+
+        if ($declaredCount > $remainingBytes) {
+            throw InvalidSerializedDataException::impossibleElementCount(
+                $payload,
+                $countStart,
+                $literal,
+                $remainingBytes,
+            );
+        }
+
+        return $declaredCount;
     }
 
     /**

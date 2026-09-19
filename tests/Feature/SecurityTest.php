@@ -88,3 +88,24 @@ it('reports an object payload as invalid', function () {
     expect(Serialized::isValid('O:8:"stdClass":0:{}'))->toBeFalse()
         ->and(Serialized::make()->allowClasses([stdClass::class])->isValid('O:8:"stdClass":0:{}'))->toBeTrue();
 });
+
+// A config-driven allow-list hands over whatever spelling was written down, so every
+// spelling PHP itself accepts has to reach unserialize() as the same class.
+it('honours an allowed class however the caller spells it', function (string $spelling) {
+    /** @var class-string $spelling */
+    $json = Serialized::make()
+        ->allowClasses([$spelling])
+        ->compact()
+        ->toJson('O:8:"stdClass":1:{s:4:"name";s:6:"Chrome";}');
+
+    expect($json)->toBe('{"name":"Chrome"}');
+})->with(['stdClass', '\stdClass', 'STDCLASS', '\STDCLASS']);
+
+it('never lets the incomplete-class pseudo-property reach the output', function () {
+    $json = Serialized::make()
+        ->allowClasses(['\stdClass'])
+        ->compact()
+        ->toJson('O:8:"stdClass":1:{s:2:"id";i:1;}');
+
+    expect($json)->not->toContain('__PHP_Incomplete_Class_Name');
+});

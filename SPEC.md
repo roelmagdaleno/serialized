@@ -5,6 +5,15 @@
 >
 > Amended and approved (2026-09-19): the `ValueNormalizer` stage, and the restorability check on
 > allow-listed classes.
+>
+> Amended and approved (2026-09-19): the allow-list is normalized once and the normalized spelling
+> is what reaches `unserialize()`; a custom-serialized (`C:`) body is validated as a nested payload
+> rather than passed through opaque.
+>
+> Amended and approved (2026-09-19): `maxElements` is enforced by the `Tokenizer` as it lexes, and
+> a declared element count is refused when the bytes left cannot hold it. `Token` keeps offsets
+> into the payload instead of copies of its bytes, since a payload at the byte limit is millions
+> of them.
 
 ## Objective
 
@@ -130,21 +139,24 @@ Each stage is one class with one job. No stage knows about the stage after it.
 ┌───────────────────┐
 │ Tokenizer         │  payload → Token[] (type, offset, length, raw)
 │                   │  catches: truncated tokens, bad length prefixes,
-│                   │           unknown type letters, trailing bytes
+│                   │           unknown type letters, trailing bytes,
+│                   │           element counts the remaining bytes cannot hold
+│                   │  lexes a byte range, so a C: body is lexed in place
+│                   │  stops at maxElements, before the tokens are allocated
 └───────────────────┘
         │  Token[]
         ▼
 ┌───────────────────┐
 │ Parser            │  Token[] → structural validation
 │                   │  catches: unbalanced braces, wrong element counts,
-│                   │           non-scalar array keys, depth, element count
+│                   │           non-scalar array keys
 └───────────────────┘
         │  ParsedPayload (depth, elementCount, classNames, flags)
         ▼
 ┌───────────────────┐
 │ PayloadPolicy     │  applies Options against ParsedPayload
 │                   │  rejects: disallowed classes, references (R:/r:),
-│                   │           non-UTF-8 strings, NAN/INF floats, limits
+│                   │           non-UTF-8 strings, NAN/INF floats, depth
 └───────────────────┘
         │  (validated)
         ▼
@@ -174,6 +186,13 @@ declared length, and the actual length, which is what turns "offset 24" into
 "declared 6 bytes, found 5 — change `s:6` to `s:5`". `unserialize()` still performs the real
 conversion, as required; the tokenizer only decides whether it is safe to call.
 
+A custom-serialized (`C:`) body is itself a serialized payload, so the three validation stages run
+over it again before the payload is accepted — in place, at its real offsets, so a diagnostic still
+points at a byte of the payload the caller passed. The body's depth and element count are spent
+from the same budget as the payload around it, which is what stops a limit being split across the
+nesting. A body that does not tokenize as one complete value is refused: the package cannot vouch
+for bytes it cannot read, and `unserialize()` would hand them straight to the class.
+
 `isValid()` stops after `PayloadPolicy`. `toArray()` stops after `SafeUnserializer` — it returns
 the PHP value as PHP built it, objects and all, so a caller that wants the real object graph gets
 it. Normalization is on the JSON path only.
@@ -198,7 +217,8 @@ normalizer closes that gap.
 4. **Enums are passed through untouched.** `json_encode()` already renders a backed enum as its
    value; casting one would turn `"h"` into `{"name": "h", "value": "h"}`.
 5. Arrays are walked recursively; scalars are returned as they are. Recursion terminates because a
-   cycle can only be serialized as `r:`, which `PayloadPolicy` has already rejected.
+   cycle can only be serialized as `r:` or `R:`, which `PayloadPolicy` rejects wherever it appears —
+   including inside a `C:` body, whose contents PHP resolves references against just the same.
 6. The class name is **not** added to the output. `O:8:"stdClass":0:{}` encodes as `{}`, and an
    injected `__class` key could collide with a real property.
 
@@ -206,6 +226,10 @@ normalizer closes that gap.
 
 1. **`allowed_classes` is never `true`.** It is `false` when no classes are allowed (the
    default), or the explicit `allowedClasses` list otherwise. There is no path that passes `true`.
+   The list is passed in the spelling `ClassAllowList` normalizes it to, never the caller's own:
+   PHP matches `allowed_classes` case-insensitively but does not strip a leading `\`, so passing
+   `'\Money'` through verbatim would leave the package believing a class allowed that PHP does not,
+   and the `__PHP_Incomplete_Class` that results is exactly what rule 2 promises cannot happen.
 2. **Objects are rejected before `unserialize()` runs.** If the tokenizer sees an `O:` or `C:`
    token whose class is not in `allowedClasses`, `UnsafeSerializedDataException` is thrown naming
    the class and its offset. **Allowing a class is only honoured when PHP can actually restore
@@ -222,7 +246,12 @@ normalizer closes that gap.
 3. **No `__wakeup`/`__destruct` gadget can fire** for a class the caller did not name. Allowing a
    class is an explicit, per-call decision by the consuming application.
 4. **Limits are enforced on the token stream**, before any memory is allocated for the
-   unserialized value.
+   unserialized value — inside a `C:` body as well as around it. `maxElements` is enforced by the
+   tokenizer as it lexes, not after: a 16 MB payload of four-byte tokens is 4M `Token` objects, so
+   counting them only once they all exist is an out-of-memory kill rather than a limit. The
+   element budget is spent across nested bodies too, which is what bounds the total work a payload
+   can ask for. Each limit is decided in exactly one place: element count where tokens are made,
+   depth where structure is known, byte length before either.
 5. **The payload is never `eval`'d, included, or written to disk.**
 
 `SECURITY.md` documents this model and a private disclosure address.
@@ -421,9 +450,11 @@ Every one of these must have a test before the corresponding code is considered 
 |---|---|
 | Happy path | The Chrome payload; nested arrays; every scalar type; empty array; empty string; integer and string keys |
 | Malformed | Truncated payload; `s:6` for a 5-byte string; unbalanced `{`/`}`; wrong element count in an array or an object, each named with its own header spelling; trailing bytes after a complete value; unknown type prefix; empty input |
-| Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected; an allow-listed class that PHP cannot load, and one it cannot instantiate, both rejected |
+| Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected; an allow-listed class that PHP cannot load, and one it cannot instantiate, both rejected; an allow-list entry spelled `\Class`, `CLASS` or `\CLASS` honoured, with no `__PHP_Incomplete_Class_Name` in the output |
+| `C:` bodies | A body holding `R:`/`r:` rejected; a body naming a class not on the allow-list rejected; a body deeper than the remaining depth budget, and one larger than the remaining element budget, rejected; a non-UTF-8 string and a `NAN` inside a body rejected with a byte offset into the whole payload; a body that is not a complete serialized value rejected; a well-formed body still converts |
 | Normalization | Private and protected properties appear in the JSON; a parent/child private collision yields `Parent::x` and `Child::x`; an object with only numeric property names stays a JSON object; a backed enum stays its value; an object nested in an array is normalized too |
-| Limits | Payload over `maxBytes`; nesting over `maxDepth`; element count over `maxElements`; each limit raised via the builder and then passing |
+| Limits | Payload over `maxBytes`; nesting over `maxDepth`; element count over `maxElements`; each limit raised via the builder and then passing; a payload whose token count passes `maxElements` is refused while lexing, reporting the ceiling rather than a total it never counted |
+| Impossible counts | An array or object header declaring more pairs than the bytes that remain could hold, at the saturating boundary (`2^62`) and far past it, rejected as malformed rather than overflowing |
 | Unrepresentable | Non-UTF-8 byte in a string; `d:NAN;`; `d:INF;`; `d:-INF;`; a non-backed enum case, rejected with a byte offset rather than reaching `JsonEncodingException` |
 | Diagnostics | Offset is byte-accurate; caret sits under the offending byte; `fix` text is present and non-generic |
 | API | `tryToJson` returns `null` instead of throwing; `isValid` never throws; `toArray` returns the PHP value; builder methods return new instances and leave the original unchanged |

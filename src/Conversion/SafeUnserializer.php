@@ -18,7 +18,7 @@ final class SafeUnserializer
     /**
      * Unserializes a payload the tokenizer, parser and policy have already accepted.
      *
-     * @param  list<class-string>  $allowedClasses
+     * @param  list<string>  $allowedClasses  normalized by ClassAllowList, never the caller's raw spelling
      *
      * @throws InvalidSerializedDataException when PHP itself rejects the payload
      */

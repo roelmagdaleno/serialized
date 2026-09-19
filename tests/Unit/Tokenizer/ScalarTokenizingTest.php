@@ -21,8 +21,8 @@ it('tokenizes every scalar type', function (string $payload, TokenType $type, st
     expect($tokens)->toHaveCount(1)
         ->and($tokens[0]->type)->toBe($type)
         ->and($tokens[0]->offset)->toBe(0)
-        ->and($tokens[0]->literal)->toBe($literal)
-        ->and($tokens[0]->raw)->toBe($payload);
+        ->and($tokens[0]->literal())->toBe($literal)
+        ->and($tokens[0]->raw())->toBe($payload);
 })->with([
     'null' => ['N;', TokenType::Null, ''],
     'false' => ['b:0;', TokenType::Boolean, '0'],
@@ -41,29 +41,29 @@ it('tokenizes every scalar type', function (string $payload, TokenType $type, st
 ]);
 
 it('records the declared byte length of a string', function () {
-    expect(tokenize('s:6:"Chrome";')[0]->declaredLength)->toBe(6);
+    expect(tokenize('s:6:"Chrome";')[0]->literalLength)->toBe(6);
 });
 
 it('slices a string by its declared length, not by scanning for the closing quote', function () {
     $token = tokenize('s:4:"a";b";')[0];
 
-    expect($token->literal)->toBe('a";b')
-        ->and($token->raw)->toBe('s:4:"a";b";')
+    expect($token->literal())->toBe('a";b')
+        ->and($token->raw())->toBe('s:4:"a";b";')
         ->and(unserialize('s:4:"a";b";'))->toBe('a";b');
 });
 
 it('keeps a multibyte string intact and counts its length in bytes', function () {
     $token = tokenize('s:4:"héo";')[0];
 
-    expect($token->literal)->toBe('héo')
-        ->and($token->declaredLength)->toBe(4)
-        ->and(strlen($token->literal))->toBe(4);
+    expect($token->literal())->toBe('héo')
+        ->and($token->literalLength)->toBe(4)
+        ->and(strlen($token->literal()))->toBe(4);
 });
 
 it('preserves the raw bytes of a binary string', function () {
     $token = tokenize("s:3:\"a\x00b\";")[0];
 
-    expect($token->literal)->toBe("a\x00b");
+    expect($token->literal())->toBe("a\x00b");
 });
 
 it('reads several scalars in sequence with byte-accurate offsets', function () {

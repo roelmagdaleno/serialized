@@ -10,7 +10,7 @@ it('tokenizes an object header with its class name and property count', function
     expect($tokens[0]->type)->toBe(TokenType::Object)
         ->and($tokens[0]->className)->toBe('stdClass')
         ->and($tokens[0]->declaredCount)->toBe(1)
-        ->and($tokens[0]->raw)->toBe('O:8:"stdClass":1:{')
+        ->and($tokens[0]->raw())->toBe('O:8:"stdClass":1:{')
         ->and($tokens[1]->offset)->toBe(18);
 });
 
@@ -29,7 +29,7 @@ it('tokenizes a custom-serialized object', function () {
 
     expect($tokens[0]->type)->toBe(TokenType::CustomObject)
         ->and($tokens[0]->className)->toBe('stdClass')
-        ->and($tokens[0]->literal)->toBe('data')
+        ->and($tokens[0]->literal())->toBe('data')
         ->and($tokens)->toHaveCount(1);
 });
 
@@ -37,7 +37,7 @@ it('tokenizes both reference forms', function (string $payload, TokenType $type)
     $tokens = tokenize($payload);
 
     expect($tokens[4]->type)->toBe($type)
-        ->and($tokens[4]->literal)->toBe('2');
+        ->and($tokens[4]->literal())->toBe('2');
 })->with([
     'back reference' => ['a:2:{i:0;N;i:1;R:2;}', TokenType::Reference],
     'value reference' => ['a:2:{i:0;N;i:1;r:2;}', TokenType::ValueReference],
@@ -47,7 +47,7 @@ it('tokenizes an enum token', function () {
     $tokens = tokenize('E:11:"Suit:Hearts";');
 
     expect($tokens[0]->type)->toBe(TokenType::Enum)
-        ->and($tokens[0]->literal)->toBe('Suit:Hearts')
+        ->and($tokens[0]->literal())->toBe('Suit:Hearts')
         ->and($tokens[0]->className)->toBe('Suit');
 });
 

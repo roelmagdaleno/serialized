@@ -51,17 +51,22 @@ final class LimitExceededException extends RuntimeException implements Serialize
     /**
      * The payload holds more values than the configured maximum.
      */
-    public static function elements(string $payload, int $actualElements, int $configuredLimit): self
+    /**
+     * Lexing stopped at the element ceiling instead of counting the whole payload.
+     *
+     * The total is deliberately unknown: counting it would mean building the token stream
+     * this limit exists to stop being built.
+     */
+    public static function elementCeiling(string $payload, int $configuredLimit): self
     {
         return self::fromDiagnostic(new Diagnostic(
             payload: $payload,
             offset: 0,
             reason: sprintf(
-                'The payload holds %d elements, over the configured limit of %d.',
-                $actualElements,
+                'The payload holds more than %d elements, the configured limit.',
                 $configuredLimit,
             ),
-            fix: sprintf('Raise the limit with ->withMaxElements(%d), or convert less data.', $actualElements),
+            fix: 'Raise the limit with ->withMaxElements(), or convert less data.',
         ));
     }
 }

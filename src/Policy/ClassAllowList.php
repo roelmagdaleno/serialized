@@ -34,6 +34,20 @@ final readonly class ClassAllowList
     }
 
     /**
+     * Returns the one spelling of every allowed class, for passing to unserialize().
+     *
+     * PHP matches allowed_classes case-insensitively but does not strip a leading
+     * separator, so handing it the caller's spelling would let "\\Money" allow a class
+     * this list considers allowed and PHP does not.
+     *
+     * @return list<string>
+     */
+    public function normalizedClassNames(): array
+    {
+        return $this->normalizedClassNames;
+    }
+
+    /**
      * Strips a leading separator and lowercases, giving one spelling per class.
      */
     private function normalize(string $className): string

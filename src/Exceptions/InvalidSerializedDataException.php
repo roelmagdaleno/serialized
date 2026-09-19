@@ -241,6 +241,48 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     /**
      * The payload holds more bytes after its first complete value.
      */
+    /**
+     * A value reached past the end of the byte range its container declared.
+     *
+     * Only a nested body can hit this: it is how a payload would otherwise smuggle a
+     * value past the length that decides how much of it unserialize() ever reads.
+     */
+    /**
+     * A structure declared more pairs than the bytes left in the payload could hold.
+     *
+     * Checked before the count is used for anything: the smallest possible pair is four
+     * bytes, so a larger count is unsatisfiable however the rest of the payload reads,
+     * and an unchecked one saturates on casting and overflows when it is doubled.
+     */
+    public static function impossibleElementCount(
+        string $payload,
+        int $offset,
+        string $declaredCount,
+        int $remainingBytes,
+    ): self {
+        return self::fromDiagnostic(new Diagnostic(
+            payload: $payload,
+            offset: $offset,
+            reason: sprintf(
+                'A structure at offset %d declares %s pairs, which %d remaining bytes cannot hold.',
+                $offset,
+                $declaredCount,
+                $remainingBytes,
+            ),
+            fix: 'Correct the declared count to the number of pairs the structure actually holds.',
+        ));
+    }
+
+    public static function valueOverrunsDeclaredLength(string $payload, int $offset): self
+    {
+        return self::fromDiagnostic(new Diagnostic(
+            payload: $payload,
+            offset: $offset,
+            reason: sprintf('A value runs past the declared end of its body at offset %d.', $offset),
+            fix: 'Correct the declared length of the custom-serialized object so it covers its whole body.',
+        ));
+    }
+
     public static function trailingBytes(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(

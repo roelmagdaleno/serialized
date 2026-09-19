@@ -22,3 +22,9 @@ it('matches however the class name is spelled', function (string $spelling) {
 it('matches a namespaced class regardless of a leading separator', function () {
     expect(new ClassAllowList(['\App\Models\Money'])->allows('App\Models\Money'))->toBeTrue();
 });
+
+it('exposes the one normalized spelling of every class it was given', function () {
+    $allowList = new ClassAllowList(['\App\Models\Money', 'STDCLASS']);
+
+    expect($allowList->normalizedClassNames())->toBe(['app\models\money', 'stdclass']);
+});

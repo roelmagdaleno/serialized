@@ -47,20 +47,30 @@ final readonly class PayloadPolicy
     /**
      * Rejects anything the options do not permit.
      *
+     * A nested body is charged the depth and elements the payload around it already
+     * spent, so a limit cannot be split across the nesting and stay under itself at
+     * every level.
+     *
      * @param  list<Token>  $tokens
+     * @param  int  $depthSpent  nesting levels used by the value this one sits inside
+     * @param  int  $elementsSpent  values already counted outside this one
      *
      * @throws UnsafeSerializedDataException when the payload names a disallowed class or uses references
      * @throws LimitExceededException when the payload is deeper or larger than allowed
      * @throws UnrepresentableValueException when a value has no JSON equivalent
      */
-    public function enforce(string $payload, array $tokens, ParsedPayload $parsed, Options $options): void
-    {
-        if ($parsed->depth > $options->maxDepth) {
-            throw LimitExceededException::depth($payload, $parsed->depth, $options->maxDepth);
-        }
+    public function enforce(
+        string $payload,
+        array $tokens,
+        ParsedPayload $parsed,
+        Options $options,
+        int $depthSpent = 0,
+        int $elementsSpent = 0,
+    ): void {
+        $combinedDepth = $depthSpent + $parsed->depth;
 
-        if ($parsed->elementCount > $options->maxElements) {
-            throw LimitExceededException::elements($payload, $parsed->elementCount, $options->maxElements);
+        if ($combinedDepth > $options->maxDepth) {
+            throw LimitExceededException::depth($payload, $combinedDepth, $options->maxDepth);
         }
 
         $allowList = new ClassAllowList($options->allowedClasses);

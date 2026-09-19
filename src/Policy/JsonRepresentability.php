@@ -38,15 +38,15 @@ final class JsonRepresentability
      */
     private function enforceToken(string $payload, Token $token): void
     {
-        if ($token->type === TokenType::String && ! mb_check_encoding($token->literal, 'UTF-8')) {
+        if ($token->type === TokenType::String && ! mb_check_encoding($token->literal(), 'UTF-8')) {
             throw UnrepresentableValueException::nonUtf8String($payload, $token->literalOffset ?? $token->offset);
         }
 
-        if ($token->type === TokenType::Float && in_array($token->literal, self::NON_FINITE_FLOATS, strict: true)) {
+        if ($token->type === TokenType::Float && in_array($token->literal(), self::NON_FINITE_FLOATS, strict: true)) {
             throw UnrepresentableValueException::nonFiniteFloat(
                 $payload,
                 $token->literalOffset ?? $token->offset,
-                $token->literal,
+                $token->literal(),
             );
         }
 
@@ -55,7 +55,7 @@ final class JsonRepresentability
             throw UnrepresentableValueException::nonBackedEnum(
                 $payload,
                 $token->literalOffset ?? $token->offset,
-                $token->literal,
+                $token->literal(),
             );
         }
     }

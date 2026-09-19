@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Changed
+
+- `Token` keeps offsets into the payload rather than copies of its bytes; `raw` and `literal` are
+  now methods deriving their substring on demand, and the redundant `declaredLength` is gone.
+  Peak memory falls by about 20% on a string-heavy payload and 11% on one of minimal tokens.
+
+### Security
+
+_No release is tagged yet, so these carry no upgrade path; `LimitExceededException::elements()`
+was removed in favour of `::elementCeiling()`, which reports the ceiling rather than a total the
+tokenizer deliberately never counts._
+
+- An allow-list entry spelled with a leading separator (`'\App\Models\User'`) no longer fails
+  open. The caller's spelling was passed to `unserialize()` verbatim, which matches
+  `allowed_classes` case-insensitively but does not strip the separator, so the class was refused
+  by PHP after the package had allowed it and `__PHP_Incomplete_Class_Name` reached the output.
+  `ClassAllowList` now owns the one spelling that reaches PHP.
+- `maxElements` is enforced by the tokenizer as it lexes, so a payload under `maxBytes` can no
+  longer be an out-of-memory kill. A 13.7 MB payload of four-byte tokens peaked at 894 MB and
+  fatally exhausted a 256 MB process — inside `tryToJson()`, whose contract is that it never
+  throws — because 4M `Token` objects were built before anything counted them.
+- An array or object header declaring more pairs than the bytes that remain could hold is refused
+  as malformed. A count at or past `2^62` saturated on casting and then overflowed to a float when
+  doubled, throwing a raw `TypeError` out of `toJson()` and `toArray()` from a 24-byte payload.
+- A custom-serialized (`C:`) body is validated as a payload in its own right instead of being
+  passed through opaque. A body could previously smuggle an `R:`/`r:` reference past the policy —
+  producing a cyclic value that exhausted the stack in `ValueNormalizer` and threw a raw `Error` —
+  and could also name classes the allow-list never saw, bypass `maxDepth` and `maxElements`, and
+  carry non-UTF-8 strings and `NAN` that surfaced as a `JsonEncodingException` with no offset.
+
 ## 1.0.0
 
 First release.
