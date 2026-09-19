@@ -16,6 +16,15 @@ use Serialized\Exceptions\InvalidSerializedDataException;
 final class SafeUnserializer
 {
     /**
+     * The severities that mean unserialize() could not read the payload.
+     *
+     * Anything quieter is a remark about the classes being restored rather than about the
+     * payload: a stored object holding a property its class has since dropped raises a
+     * deprecation, and reading that as failure would refuse a payload PHP just rebuilt.
+     */
+    private const array FAILURE_LEVELS = [E_WARNING, E_USER_WARNING];
+
+    /**
      * Unserializes a payload the tokenizer, parser and policy have already accepted.
      *
      * @param  list<string>  $allowedClasses  normalized by ClassAllowList, never the caller's raw spelling
@@ -27,6 +36,11 @@ final class SafeUnserializer
         $failure = null;
 
         set_error_handler(static function (int $level, string $message) use (&$failure): bool {
+            if (! in_array($level, self::FAILURE_LEVELS, strict: true)) {
+                // Handing it back to PHP keeps the remark visible without it becoming ours.
+                return false;
+            }
+
             $failure = $message;
 
             return true;

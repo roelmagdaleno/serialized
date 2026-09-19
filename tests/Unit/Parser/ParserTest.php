@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Serialized\Parser\ParsedPayload;
 use Serialized\Parser\Parser;
+use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\Tokenizer;
 
 function parse(string $payload): ParsedPayload
@@ -33,5 +34,12 @@ it('rejects bytes trailing a complete value', function () {
 it('carries only metadata, never unserialized values', function () {
     $properties = array_keys(get_object_vars(parse('s:6:"Chrome";')));
 
-    expect($properties)->toBe(['depth', 'elementCount', 'classNames', 'referenceOffset']);
+    expect($properties)->toBe(['depth', 'elementCount', 'classNames', 'referenceOffset', 'propertyNames']);
+});
+
+it('keeps the property names it reports as tokens, not as values read from the payload', function () {
+    $parsed = parse('O:8:"stdClass":1:{s:4:"'."\x00".'a'."\x00".'b";i:1;}');
+
+    expect($parsed->propertyNames)->toHaveCount(1)
+        ->and($parsed->propertyNames[0])->toBeInstanceOf(Token::class);
 });

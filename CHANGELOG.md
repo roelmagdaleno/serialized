@@ -11,6 +11,23 @@ All notable changes to this project are documented here. This project follows
   now methods deriving their substring on demand, and the redundant `declaredLength` is gone.
   Peak memory falls by about 20% on a string-heavy payload and 11% on one of minimal tokens.
 
+### Fixed
+
+- A serialized object carrying a property its class no longer declares now converts. PHP raises
+  `E_DEPRECATED` ("Creation of dynamic property") for it on 8.2+, which the error handler around
+  `unserialize()` read as failure — so `toJson()` called a payload PHP had just rebuilt malformed,
+  reported it at offset 0, and disagreed with `isValid()`, which said the same payload was fine.
+  Only `E_WARNING` and `E_USER_WARNING` now mean failure, and the diagnostic carries PHP's own
+  message instead of discarding it.
+- A property name holding a NUL byte that demangling does not remove — `"\0"`, `"\0ab"`,
+  `"\0A\0b\0c"` — is refused with the name's byte offset. It previously threw
+  `Error: Cannot access property starting with "\0"` out of `toJson()`, and building the object
+  from an array instead would have let `json_encode()` drop the property silently.
+- A float literal that overflows the double range (`d:1e999;`, `d:1e309;`) is rejected as
+  unrepresentable with a byte offset. Only the spellings `NAN`, `INF` and `-INF` were matched, so
+  an overflowing literal reached `json_encode()` and surfaced as `JsonEncodingException`, whose
+  `diagnostic()` is null.
+
 ### Security
 
 _No release is tagged yet, so these carry no upgrade path; `LimitExceededException::elements()`

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Serialized\Conversion;
 
+use Serialized\PropertyName;
 use stdClass;
 use UnitEnum;
 
@@ -63,31 +64,12 @@ final class ValueNormalizer
         $properties = [];
 
         foreach ((array) $object as $key => $value) {
-            [$owner, $name] = $this->splitStorageKey((string) $key, $object::class);
+            $propertyName = PropertyName::fromStorageKey((string) $key, $object::class);
 
-            $properties[] = ['name' => $name, 'owner' => $owner, 'value' => $value];
+            $properties[] = ['name' => $propertyName->name, 'owner' => $propertyName->owner, 'value' => $value];
         }
 
         return $properties;
-    }
-
-    /**
-     * Splits a property's storage key into the class that owns it and its plain name.
-     *
-     * PHP stores a private property under "\0Declaring\0name" and a protected one under
-     * "\0*\0name"; the NUL-delimited spelling is a storage detail, not data the user wrote.
-     *
-     * @return array{string, string}
-     */
-    private function splitStorageKey(string $key, string $objectClass): array
-    {
-        if (preg_match('/^\x00(?<owner>[^\x00]+)\x00(?<name>.*)$/s', $key, $matches) !== 1) {
-            return [$objectClass, $key];
-        }
-
-        $owner = $matches['owner'];
-
-        return [$owner === '*' ? $objectClass : $owner, $matches['name']];
     }
 
     /**

@@ -10,6 +10,13 @@
 > is what reaches `unserialize()`; a custom-serialized (`C:`) body is validated as a nested payload
 > rather than passed through opaque.
 >
+> Amended and approved (2026-09-19): a property name that does not survive demangling is rejected
+> before `unserialize()`, and the mangled-name rule lives in one `PropertyName` value object.
+>
+> Amended and approved (2026-09-19): a float literal is rejected when its value is non-finite, not
+> only when it is spelled `NAN`/`INF`; a PHP diagnostic that is not a failure no longer rejects the
+> payload.
+>
 > Amended and approved (2026-09-19): `maxElements` is enforced by the `Tokenizer` as it lexes, and
 > a declared element count is refused when the bytes left cannot hold it. `Token` keeps offsets
 > into the payload instead of copies of its bytes, since a payload at the byte limit is millions
@@ -163,6 +170,7 @@ Each stage is one class with one job. No stage knows about the stage after it.
 ┌───────────────────┐
 │ SafeUnserializer  │  unserialize($payload, ['allowed_classes' => …])
 │                   │  wraps warnings as exceptions; never returns false silently
+│                   │  a notice or deprecation is left to PHP, not read as failure
 └───────────────────┘
         │  mixed
         ▼
@@ -208,8 +216,13 @@ normalizer closes that gap.
 
 1. An object becomes a `stdClass`, never an array. An object whose property names are all numeric
    would otherwise encode as a JSON *array*, losing the object/array distinction the payload drew.
-2. Property names are demangled: `\0Class\0name` (private) and `\0*\0name` (protected) both
-   become `name`. The NUL-delimited spelling is a PHP storage detail, not data the user wrote.
+2. Property names are demangled by `PropertyName`: `\0Class\0name` (private) and `\0*\0name`
+   (protected) both become `name`. The NUL-delimited spelling is a PHP storage detail, not data the
+   user wrote. A name still holding a NUL once demangled — `\0` alone, or `\0A\0b\0c` — is not one
+   PHP can assign to a `stdClass`, and casting the array instead would let `json_encode()` drop it
+   without a word, so the policy refuses such a payload before `unserialize()` runs. `PropertyName`
+   owns that rule for both stages: the normalizer asks it to split, the policy asks it whether the
+   split survives.
 3. **Colliding names are qualified, never dropped.** A child class redeclaring a parent's private
    property yields `\0Parent\0x` *and* `\0Child\0x`. When two properties demangle to one name,
    every member of that collision is written as `Class::name` — `Parent::x` and `Child::x`, with no
@@ -254,6 +267,13 @@ normalizer closes that gap.
    depth where structure is known, byte length before either.
 5. **The payload is never `eval`'d, included, or written to disk.**
 
+**Only a warning means `unserialize()` failed.** The error handler wrapping the call captures
+`E_WARNING` and `E_USER_WARNING`; everything quieter is handed back to PHP. A serialized object
+carrying a property its class no longer declares raises `E_DEPRECATED` ("Creation of dynamic
+property") on PHP 8.2+, and reading that as a failure would reject the legacy blobs this package
+exists to read — while `isValid()`, which stops before `unserialize()`, called the same payload
+good.
+
 `SECURITY.md` documents this model and a private disclosure address.
 
 ## Error Handling
@@ -263,9 +283,9 @@ can `catch (SerializedException $e)` for everything, or narrow to one case.
 
 | Exception | Thrown when |
 |---|---|
-| `InvalidSerializedDataException` | Malformed payload: truncated token, length mismatch, unbalanced braces, wrong element count, trailing bytes |
+| `InvalidSerializedDataException` | Malformed payload: truncated token, length mismatch, unbalanced braces, wrong element count, trailing bytes; or `unserialize()` itself warning that it could not read the payload, whose message the diagnostic carries |
 | `UnsafeSerializedDataException` | Object of a class not in `allowedClasses`; an allow-listed class PHP cannot load or cannot restore; reference token (`R:`/`r:`) |
-| `UnrepresentableValueException` | Value valid in PHP but not in JSON: non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case |
+| `UnrepresentableValueException` | Value valid in PHP but not in JSON: a property name that still holds a NUL once demangled, non-UTF-8 string, a float whose value is not finite — spelled `NAN`/`INF`/`-INF` or overflowing the double range like `1e999` — a non-backed enum case |
 | `LimitExceededException` | `maxBytes`, `maxDepth`, or `maxElements` exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation (should be unreachable; wraps `JsonException`) |
 
@@ -315,6 +335,7 @@ src/
   Serialized.php                          Static entry point; delegates to SerializedConverter
   SerializedConverter.php                 Immutable fluent builder; orchestrates the pipeline
   Options.php                             readonly value object: limits, allowed classes, JSON flags
+  PropertyName.php                        readonly value object: a property's storage key, split
 
   Tokenizer/
     Tokenizer.php                         string → Token[]
@@ -324,7 +345,8 @@ src/
 
   Parser/
     Parser.php                            Token[] → ParsedPayload; structural rules
-    ParsedPayload.php                     readonly: depth, elementCount, classNames, referenceOffset
+    ParsedPayload.php                     readonly: depth, elementCount, classNames, referenceOffset,
+                                          propertyNames (only those holding a NUL byte)
     StructureFrame.php                    One open array or object while the parser walks
 
   Policy/
@@ -452,10 +474,11 @@ Every one of these must have a test before the corresponding code is considered 
 | Malformed | Truncated payload; `s:6` for a 5-byte string; unbalanced `{`/`}`; wrong element count in an array or an object, each named with its own header spelling; trailing bytes after a complete value; unknown type prefix; empty input |
 | Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected; an allow-listed class that PHP cannot load, and one it cannot instantiate, both rejected; an allow-list entry spelled `\Class`, `CLASS` or `\CLASS` honoured, with no `__PHP_Incomplete_Class_Name` in the output |
 | `C:` bodies | A body holding `R:`/`r:` rejected; a body naming a class not on the allow-list rejected; a body deeper than the remaining depth budget, and one larger than the remaining element budget, rejected; a non-UTF-8 string and a `NAN` inside a body rejected with a byte offset into the whole payload; a body that is not a complete serialized value rejected; a well-formed body still converts |
+| Property names | `\0` alone, `\0ab` and `\0A\0b\0c` as property names rejected with the name's byte offset, rather than an `Error` out of `toJson()`; a real private and a real protected name still convert; a NUL inside an array key or a string value still converts |
 | Normalization | Private and protected properties appear in the JSON; a parent/child private collision yields `Parent::x` and `Child::x`; an object with only numeric property names stays a JSON object; a backed enum stays its value; an object nested in an array is normalized too |
 | Limits | Payload over `maxBytes`; nesting over `maxDepth`; element count over `maxElements`; each limit raised via the builder and then passing; a payload whose token count passes `maxElements` is refused while lexing, reporting the ceiling rather than a total it never counted |
 | Impossible counts | An array or object header declaring more pairs than the bytes that remain could hold, at the saturating boundary (`2^62`) and far past it, rejected as malformed rather than overflowing |
-| Unrepresentable | Non-UTF-8 byte in a string; `d:NAN;`; `d:INF;`; `d:-INF;`; a non-backed enum case, rejected with a byte offset rather than reaching `JsonEncodingException` |
+| Unrepresentable | Non-UTF-8 byte in a string; `d:NAN;`; `d:INF;`; `d:-INF;`; `d:1e999;` and `d:-1e999;`, which overflow to infinity rather than spelling it; a non-backed enum case, rejected with a byte offset rather than reaching `JsonEncodingException` |
 | Diagnostics | Offset is byte-accurate; caret sits under the offending byte; `fix` text is present and non-generic |
 | API | `tryToJson` returns `null` instead of throwing; `isValid` never throws; `toArray` returns the PHP value; builder methods return new instances and leave the original unchanged |
 

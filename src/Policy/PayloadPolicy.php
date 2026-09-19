@@ -93,6 +93,7 @@ final readonly class PayloadPolicy
             throw UnsafeSerializedDataException::references($payload, $parsed->referenceOffset);
         }
 
+        $this->representability->enforcePropertyNames($payload, $parsed->propertyNames);
         $this->representability->enforce($payload, $tokens);
     }
 }

@@ -6,6 +6,7 @@ namespace Serialized\Policy;
 
 use BackedEnum;
 use Serialized\Exceptions\UnrepresentableValueException;
+use Serialized\PropertyName;
 use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\TokenType;
 
@@ -17,7 +18,7 @@ use Serialized\Tokenizer\TokenType;
  */
 final class JsonRepresentability
 {
-    private const array NON_FINITE_FLOATS = ['NAN', 'INF', '-INF'];
+    private const array NON_FINITE_SPELLINGS = ['NAN', 'INF', '-INF'];
 
     /**
      * Rejects the first value JSON cannot carry.
@@ -34,6 +35,40 @@ final class JsonRepresentability
     }
 
     /**
+     * Tells whether a float literal denotes a finite value.
+     *
+     * Both halves are needed: PHP casts the spelled forms to 0.0 rather than to the values
+     * they name, while a literal like 1e999 spells a finite number and overflows to
+     * infinity on being read.
+     */
+    private function isFinite(string $literal): bool
+    {
+        return ! in_array($literal, self::NON_FINITE_SPELLINGS, strict: true)
+            && is_finite((float) $literal);
+    }
+
+    /**
+     * Rejects the first property name that would not survive being demangled.
+     *
+     * @param  list<Token>  $propertyNames
+     *
+     * @throws UnrepresentableValueException when a name still holds a NUL once demangled
+     */
+    public function enforcePropertyNames(string $payload, array $propertyNames): void
+    {
+        foreach ($propertyNames as $token) {
+            if (PropertyName::fromStorageKey($token->literal(), '')->isRepresentable()) {
+                continue;
+            }
+
+            throw UnrepresentableValueException::unusablePropertyName(
+                $payload,
+                $token->literalOffset ?? $token->offset,
+            );
+        }
+    }
+
+    /**
      * Rejects one token if its literal cannot be expressed in JSON.
      */
     private function enforceToken(string $payload, Token $token): void
@@ -42,7 +77,7 @@ final class JsonRepresentability
             throw UnrepresentableValueException::nonUtf8String($payload, $token->literalOffset ?? $token->offset);
         }
 
-        if ($token->type === TokenType::Float && in_array($token->literal(), self::NON_FINITE_FLOATS, strict: true)) {
+        if ($token->type === TokenType::Float && ! $this->isFinite($token->literal())) {
             throw UnrepresentableValueException::nonFiniteFloat(
                 $payload,
                 $token->literalOffset ?? $token->offset,

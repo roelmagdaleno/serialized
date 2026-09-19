@@ -32,6 +32,7 @@ final class Parser
         $rootCompleted = false;
         $classNames = [];
         $referenceOffset = null;
+        $propertyNames = [];
 
         foreach ($tokens as $token) {
             if ($token->type === TokenType::Close) {
@@ -41,7 +42,13 @@ final class Parser
                 continue;
             }
 
-            $this->fillSlot($payload, $this->innermostFrame($openStructures), $token, $rootCompleted);
+            $currentStructure = $this->innermostFrame($openStructures);
+
+            if ($this->isPropertyNameHoldingNul($currentStructure, $token)) {
+                $propertyNames[] = $token;
+            }
+
+            $this->fillSlot($payload, $currentStructure, $token, $rootCompleted);
 
             if ($token->className !== null) {
                 $classNames[] = [
@@ -76,6 +83,7 @@ final class Parser
             elementCount: $elementCount,
             classNames: $classNames,
             referenceOffset: $referenceOffset,
+            propertyNames: $propertyNames,
         );
     }
 
@@ -108,6 +116,22 @@ final class Parser
         }
 
         $currentStructure->fillSlot();
+    }
+
+    /**
+     * Tells whether a token names an object property and holds a NUL byte.
+     *
+     * Structure is what the parser can see and the policy cannot: only a key slot of an
+     * object is a property name. Whether such a name is usable is the policy's call, so
+     * this narrows rather than decides — a private or protected name holds NULs too.
+     */
+    private function isPropertyNameHoldingNul(?StructureFrame $currentStructure, Token $token): bool
+    {
+        return $currentStructure !== null
+            && $currentStructure->token->type === TokenType::Object
+            && $currentStructure->expectsKey()
+            && $token->type === TokenType::String
+            && str_contains($token->literal(), "\x00");
     }
 
     /**

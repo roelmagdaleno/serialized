@@ -233,7 +233,7 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
         return self::fromDiagnostic(new Diagnostic(
             payload: $payload,
             offset: $offset,
-            reason: sprintf('PHP could not unserialize this payload at offset %d.', $offset),
+            reason: sprintf('PHP could not unserialize this payload at offset %d: %s', $offset, $phpMessage),
             fix: 'Check the payload against the byte shown; it may have been altered in storage or transit.',
         ));
     }
