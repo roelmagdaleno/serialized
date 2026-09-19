@@ -25,6 +25,29 @@ it('records a custom-serialized object as a named class', function () {
         ->toBe([['className' => 'stdClass', 'offset' => 0, 'type' => TokenType::CustomObject]]);
 });
 
+it('names the object, not an array, when its property count is wrong', function () {
+    $diagnostic = diagnosticFor(fn () => parse('O:8:"stdClass":2:{s:1:"a";i:1;}'));
+
+    expect($diagnostic->reason)->toContain('object')
+        ->and($diagnostic->reason)->not->toContain('array')
+        ->and($diagnostic->fix)->toContain('O:8:"stdClass":1')
+        ->and($diagnostic->fix)->not->toContain('a:1');
+});
+
+it('names the object header to change when it holds more than it declares', function () {
+    $diagnostic = diagnosticFor(fn () => parse('O:8:"stdClass":1:{s:1:"a";i:1;s:1:"b";i:2;}'));
+
+    expect($diagnostic->fix)->toContain('O:8:"stdClass":1')
+        ->and($diagnostic->fix)->toContain('O:8:"stdClass":2');
+});
+
+it('names the object when it is never closed', function () {
+    $diagnostic = diagnosticFor(fn () => parse('O:8:"stdClass":1:{s:1:"a";i:1;'));
+
+    expect($diagnostic->reason)->toContain('object')
+        ->and($diagnostic->reason)->not->toContain('array');
+});
+
 it('records where the first reference sits', function (string $payload) {
     expect(parse($payload)->referenceOffset)->toBe(15);
 })->with([

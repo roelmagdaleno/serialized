@@ -420,7 +420,7 @@ Every one of these must have a test before the corresponding code is considered 
 | Area | Cases |
 |---|---|
 | Happy path | The Chrome payload; nested arrays; every scalar type; empty array; empty string; integer and string keys |
-| Malformed | Truncated payload; `s:6` for a 5-byte string; unbalanced `{`/`}`; wrong array element count; trailing bytes after a complete value; unknown type prefix; empty input |
+| Malformed | Truncated payload; `s:6` for a 5-byte string; unbalanced `{`/`}`; wrong element count in an array or an object, each named with its own header spelling; trailing bytes after a complete value; unknown type prefix; empty input |
 | Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected; an allow-listed class that PHP cannot load, and one it cannot instantiate, both rejected |
 | Normalization | Private and protected properties appear in the JSON; a parent/child private collision yields `Parent::x` and `Child::x`; an object with only numeric property names stays a JSON object; a backed enum stays its value; an object nested in an array is normalized too |
 | Limits | Payload over `maxBytes`; nesting over `maxDepth`; element count over `maxElements`; each limit raised via the builder and then passing |

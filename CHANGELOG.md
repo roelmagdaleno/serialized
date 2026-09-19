@@ -18,5 +18,7 @@ First release.
   `__PHP_Incomplete_Class` or a raw `Error`.
 - References (`R:`/`r:`) and values JSON cannot carry — non-UTF-8 strings, `NAN`, `INF`, `-INF`,
   non-backed enum cases — are rejected with a byte-accurate diagnostic.
+- A wrong element count or a missing brace is reported against the structure that owns it: an
+  object is called an object, and the suggested fix spells `O:8:"stdClass":1`, not `a:1`.
 - Configurable limits: 16 MB, depth 64, 1,000,000 elements.
 - Every exception carries a `Diagnostic` with the offset, the reason and a suggested fix.

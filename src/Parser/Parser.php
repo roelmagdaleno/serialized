@@ -56,7 +56,7 @@ final class Parser
             }
 
             if ($token->type->opensStructure()) {
-                $openStructures[] = new StructureFrame($token->offset, $token->declaredCount ?? 0);
+                $openStructures[] = new StructureFrame($token);
             } else {
                 $rootCompleted = $openStructures === [];
             }
@@ -68,7 +68,7 @@ final class Parser
         $unclosed = $this->innermostFrame($openStructures);
 
         if ($unclosed !== null) {
-            throw InvalidSerializedDataException::unclosedArray($payload, $unclosed->offset);
+            throw InvalidSerializedDataException::unclosedStructure($payload, $unclosed->token);
         }
 
         return new ParsedPayload(
@@ -98,8 +98,7 @@ final class Parser
         if ($currentStructure->isFull()) {
             throw InvalidSerializedDataException::elementCountMismatch(
                 $payload,
-                $currentStructure->offset,
-                $currentStructure->declaredCount,
+                $currentStructure->token,
                 $currentStructure->filledPairs() + 1,
             );
         }
@@ -139,8 +138,7 @@ final class Parser
         if (! $currentStructure->isFull()) {
             throw InvalidSerializedDataException::elementCountMismatch(
                 $payload,
-                $currentStructure->offset,
-                $currentStructure->declaredCount,
+                $currentStructure->token,
                 $currentStructure->filledPairs(),
             );
         }

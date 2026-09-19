@@ -6,6 +6,7 @@ namespace Serialized\Exceptions;
 
 use InvalidArgumentException;
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\TokenType;
 
 final class InvalidSerializedDataException extends InvalidArgumentException implements SerializedException
@@ -105,25 +106,45 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     }
 
     /**
-     * An array holds a different number of pairs than its header declares.
+     * A structure holds a different number of pairs than its header declares.
      */
-    public static function elementCountMismatch(
-        string $payload,
-        int $offset,
-        int $declaredCount,
-        int $actualCount,
-    ): self {
+    public static function elementCountMismatch(string $payload, Token $header, int $actualCount): self
+    {
+        $declaredCount = $header->declaredCount ?? 0;
+        $label = $header->type->label();
+
         return self::fromDiagnostic(new Diagnostic(
             payload: $payload,
-            offset: $offset,
+            offset: $header->offset,
             reason: sprintf(
-                'The array at offset %d declares %d element(s) but holds %d.',
-                $offset,
+                'The %s at offset %d declares %d element(s) but holds %d.',
+                $label,
+                $header->offset,
                 $declaredCount,
                 $actualCount,
             ),
-            fix: sprintf('Change a:%d to a:%d, or correct the array contents.', $declaredCount, $actualCount),
+            fix: sprintf(
+                'Change %s to %s, or correct the %s contents.',
+                self::headerFor($header, $declaredCount),
+                self::headerFor($header, $actualCount),
+                $label,
+            ),
         ));
+    }
+
+    /**
+     * Spells the header a structure would need to declare a given number of pairs.
+     *
+     * A structure header carries a class name when it opens an object and none when it
+     * opens an array, which is the whole difference between the two spellings.
+     */
+    private static function headerFor(Token $header, int $count): string
+    {
+        $className = $header->className;
+
+        return $className === null
+            ? sprintf('a:%d', $count)
+            : sprintf('O:%d:"%s":%d', strlen($className), $className, $count);
     }
 
     /**
@@ -140,14 +161,18 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     }
 
     /**
-     * An array is still open when the payload ends.
+     * An array or object is still open when the payload ends.
      */
-    public static function unclosedArray(string $payload, int $offset): self
+    public static function unclosedStructure(string $payload, Token $header): self
     {
         return self::fromDiagnostic(new Diagnostic(
             payload: $payload,
-            offset: $offset,
-            reason: sprintf('The array opened at offset %d is never closed.', $offset),
+            offset: $header->offset,
+            reason: sprintf(
+                'The %s opened at offset %d is never closed.',
+                $header->type->label(),
+                $header->offset,
+            ),
             fix: 'Append the missing closing brace, or check whether the payload was cut short in storage.',
         ));
     }

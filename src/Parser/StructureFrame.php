@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Serialized\Parser;
 
+use Serialized\Tokenizer\Token;
+
 /**
  * Tracks one open array or object while the parser walks the token stream.
  *
@@ -16,13 +18,22 @@ final class StructureFrame
     private int $slotsLeft;
 
     /**
-     * Opens a frame for a structure that declares the given number of pairs.
+     * Opens a frame for the structure the given header token declares.
+     *
+     * The token is kept so a diagnostic can name the structure that went wrong and
+     * spell the header the payload would need instead.
      */
-    public function __construct(
-        public readonly int $offset,
-        public readonly int $declaredCount,
-    ) {
-        $this->slotsLeft = $declaredCount * 2;
+    public function __construct(public readonly Token $token)
+    {
+        $this->slotsLeft = $this->declaredCount() * 2;
+    }
+
+    /**
+     * Returns how many key/value pairs the header declares.
+     */
+    public function declaredCount(): int
+    {
+        return $this->token->declaredCount ?? 0;
     }
 
     /**
@@ -54,6 +65,6 @@ final class StructureFrame
      */
     public function filledPairs(): int
     {
-        return intdiv($this->declaredCount * 2 - $this->slotsLeft, 2);
+        return intdiv($this->declaredCount() * 2 - $this->slotsLeft, 2);
     }
 }
