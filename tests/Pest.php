@@ -60,6 +60,14 @@ function chromePayload(): string
 }
 
 /**
+ * Builds the payload for an empty object of a class, with the length PHP would write.
+ */
+function objectPayloadFor(string $className): string
+{
+    return sprintf('O:%d:"%s":0:{}', strlen($className), $className);
+}
+
+/**
  * Reads a stored real-world payload from the fixtures directory.
  */
 function storedPayload(string $name): string

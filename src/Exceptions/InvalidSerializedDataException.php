@@ -36,7 +36,7 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
             payload: $payload,
             offset: $offset,
             reason: sprintf('Unknown type prefix "%s" at offset %d.', $prefix, $offset),
-            fix: 'Expected one of: N, b, i, d, s, a, O, C, R, r.',
+            fix: 'Expected one of: N, b, i, d, s, a, O, C, R, r, E.',
         ));
     }
 

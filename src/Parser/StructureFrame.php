@@ -5,17 +5,18 @@ declare(strict_types=1);
 namespace Serialized\Parser;
 
 /**
- * Tracks one open array while the parser walks the token stream.
+ * Tracks one open array or object while the parser walks the token stream.
  *
- * An array of N pairs occupies 2N slots, filled key, value, key, value, which is how
- * the parser knows whether the next token is being used as a key.
+ * A structure of N pairs occupies 2N slots, filled key, value, key, value, which is how
+ * the parser knows whether the next token is being used as a key. An object's properties
+ * are counted the same way: a property name fills a key slot, its value the next.
  */
-final class ArrayFrame
+final class StructureFrame
 {
     private int $slotsLeft;
 
     /**
-     * Opens a frame for an array that declares the given number of pairs.
+     * Opens a frame for a structure that declares the given number of pairs.
      */
     public function __construct(
         public readonly int $offset,

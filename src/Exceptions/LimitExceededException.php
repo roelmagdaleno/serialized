@@ -14,9 +14,10 @@ final class LimitExceededException extends RuntimeException implements Serialize
     /**
      * The payload holds more bytes than the configured maximum.
      *
-     * Checked before tokenizing, so an oversized payload costs one strlen() call.
+     * The diagnostic carries no payload: rendering a snippet of a payload rejected for its
+     * size would copy the very bytes the limit exists to avoid handling.
      */
-    public static function bytes(string $payload, int $actualBytes, int $configuredLimit): self
+    public static function bytes(int $actualBytes, int $configuredLimit): self
     {
         return self::fromDiagnostic(new Diagnostic(
             payload: '',

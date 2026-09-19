@@ -2,6 +2,9 @@
 
 > Status: **approved** (2026-09-18) · Phase 1 (Specify) of spec-driven development.
 > Update this document before changing the code it describes.
+>
+> Amended and approved (2026-09-19): the `ValueNormalizer` stage, and the restorability check on
+> allow-listed classes.
 
 ## Objective
 
@@ -60,15 +63,15 @@ echo Serialized::toJson($payload);
 ```bash
 composer install                  # install dev dependencies
 composer test                     # vendor/bin/pest
-composer test -- --coverage       # with coverage (requires Xdebug or PCOV)
+composer coverage                 # pest --coverage --min=100 (loads Xdebug explicitly)
 composer pint                     # vendor/bin/pint        (fix formatting)
 composer pint -- --test           # vendor/bin/pint --test (check only, used in CI)
 composer stan                     # vendor/bin/phpstan analyse
 composer check                    # pint --test && stan && test — the full gate
 ```
 
-All four scripts are defined in `composer.json`. There is no CI pipeline for 1.0 — `composer check`
-is run locally before any commit.
+All of these are defined in `composer.json`. There is no CI pipeline for 1.0 — `composer check`
+is run locally before any commit, and `composer coverage` before a release.
 
 ## Public API
 
@@ -152,6 +155,12 @@ Each stage is one class with one job. No stage knows about the stage after it.
         │  mixed
         ▼
 ┌───────────────────┐
+│ ValueNormalizer   │  objects → stdClass with demangled property names
+│                   │  so private and protected properties survive encoding
+└───────────────────┘
+        │  mixed
+        ▼
+┌───────────────────┐
 │ JsonEncoder       │  json_encode($value, $flags)
 └───────────────────┘
         │
@@ -165,7 +174,33 @@ declared length, and the actual length, which is what turns "offset 24" into
 "declared 6 bytes, found 5 — change `s:6` to `s:5`". `unserialize()` still performs the real
 conversion, as required; the tokenizer only decides whether it is safe to call.
 
-`isValid()` stops after `PayloadPolicy`. `toArray()` stops after `SafeUnserializer`.
+`isValid()` stops after `PayloadPolicy`. `toArray()` stops after `SafeUnserializer` — it returns
+the PHP value as PHP built it, objects and all, so a caller that wants the real object graph gets
+it. Normalization is on the JSON path only.
+
+### Why normalize before encoding
+
+`json_encode()` serializes an object's **public** properties and silently drops the rest. An
+allow-listed `Money` with a private `$amount` therefore encodes as `{}` — the package's central
+promise, "show me what is in this payload", answered with an empty object and no error. The
+normalizer closes that gap.
+
+**Rules**
+
+1. An object becomes a `stdClass`, never an array. An object whose property names are all numeric
+   would otherwise encode as a JSON *array*, losing the object/array distinction the payload drew.
+2. Property names are demangled: `\0Class\0name` (private) and `\0*\0name` (protected) both
+   become `name`. The NUL-delimited spelling is a PHP storage detail, not data the user wrote.
+3. **Colliding names are qualified, never dropped.** A child class redeclaring a parent's private
+   property yields `\0Parent\0x` *and* `\0Child\0x`. When two properties demangle to one name,
+   every member of that collision is written as `Class::name` — `Parent::x` and `Child::x`, with no
+   bare `x`. Picking a winner would reintroduce the silent loss this stage exists to prevent.
+4. **Enums are passed through untouched.** `json_encode()` already renders a backed enum as its
+   value; casting one would turn `"h"` into `{"name": "h", "value": "h"}`.
+5. Arrays are walked recursively; scalars are returned as they are. Recursion terminates because a
+   cycle can only be serialized as `r:`, which `PayloadPolicy` has already rejected.
+6. The class name is **not** added to the output. `O:8:"stdClass":0:{}` encodes as `{}`, and an
+   injected `__class` key could collide with a real property.
 
 ## Security Model
 
@@ -173,7 +208,17 @@ conversion, as required; the tokenizer only decides whether it is safe to call.
    default), or the explicit `allowedClasses` list otherwise. There is no path that passes `true`.
 2. **Objects are rejected before `unserialize()` runs.** If the tokenizer sees an `O:` or `C:`
    token whose class is not in `allowedClasses`, `UnsafeSerializedDataException` is thrown naming
-   the class and its offset. A `__PHP_Incomplete_Class` never reaches the caller.
+   the class and its offset. **Allowing a class is only honoured when PHP can actually restore
+   that class**, which `ClassRestorability` decides before `unserialize()` runs:
+   - a name PHP cannot load would come back as a `__PHP_Incomplete_Class` — not the class the
+     caller vouched for — so the pseudo-property `__PHP_Incomplete_Class_Name` can never reach the
+     output;
+   - an abstract class, interface or trait, or an enum written as an object token, makes
+     `unserialize()` raise a raw `Error`, which would escape the package's exception hierarchy.
+
+   Both are refused with an `UnsafeSerializedDataException` naming the class and its offset. An
+   enum reached through an `E:` token is the one restorable-but-not-instantiable case, and is
+   checked with `enum_exists()` instead.
 3. **No `__wakeup`/`__destruct` gadget can fire** for a class the caller did not name. Allowing a
    class is an explicit, per-call decision by the consuming application.
 4. **Limits are enforced on the token stream**, before any memory is allocated for the
@@ -190,8 +235,8 @@ can `catch (SerializedException $e)` for everything, or narrow to one case.
 | Exception | Thrown when |
 |---|---|
 | `InvalidSerializedDataException` | Malformed payload: truncated token, length mismatch, unbalanced braces, wrong element count, trailing bytes |
-| `UnsafeSerializedDataException` | Object of a class not in `allowedClasses`; reference token (`R:`/`r:`) |
-| `UnrepresentableValueException` | Value valid in PHP but not in JSON: non-UTF-8 string, `NAN`, `INF`, `-INF` |
+| `UnsafeSerializedDataException` | Object of a class not in `allowedClasses`; an allow-listed class PHP cannot load or cannot restore; reference token (`R:`/`r:`) |
+| `UnrepresentableValueException` | Value valid in PHP but not in JSON: non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case |
 | `LimitExceededException` | `maxBytes`, `maxDepth`, or `maxElements` exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation (should be unreachable; wraps `JsonException`) |
 
@@ -245,19 +290,23 @@ src/
   Tokenizer/
     Tokenizer.php                         string → Token[]
     Token.php                             readonly: TokenType, offset, length, raw, declaredLength
-    TokenType.php                         enum: Array_, Object_, CustomObject, String_, Integer,
-                                          Float_, Boolean, Null_, Reference, ObjectReference, Close
+    TokenType.php                         enum: Null, Boolean, Integer, Float, String, Array,
+                                          Close, Object, CustomObject, Reference, ValueReference, Enum
 
   Parser/
     Parser.php                            Token[] → ParsedPayload; structural rules
-    ParsedPayload.php                     readonly: depth, elementCount, classNames, hasReferences
+    ParsedPayload.php                     readonly: depth, elementCount, classNames, referenceOffset
+    StructureFrame.php                    One open array or object while the parser walks
 
   Policy/
     PayloadPolicy.php                     Applies Options to ParsedPayload
     ClassAllowList.php                    Owns the allowed-class decision
+    ClassRestorability.php                Owns whether PHP can rebuild a named class
+    JsonRepresentability.php              Rejects values JSON cannot carry
 
   Conversion/
     SafeUnserializer.php                  Wraps unserialize() + error handling
+    ValueNormalizer.php                   Objects → stdClass, property names demangled
     JsonEncoder.php                       Wraps json_encode() + flag handling
 
   Diagnostics/
@@ -372,9 +421,10 @@ Every one of these must have a test before the corresponding code is considered 
 |---|---|
 | Happy path | The Chrome payload; nested arrays; every scalar type; empty array; empty string; integer and string keys |
 | Malformed | Truncated payload; `s:6` for a 5-byte string; unbalanced `{`/`}`; wrong array element count; trailing bytes after a complete value; unknown type prefix; empty input |
-| Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected |
+| Security | `O:` object rejected by default; `O:` object accepted when allow-listed; `C:` custom object; nested object inside an allowed array; `R:`/`r:` reference rejected; an allow-listed class that PHP cannot load, and one it cannot instantiate, both rejected |
+| Normalization | Private and protected properties appear in the JSON; a parent/child private collision yields `Parent::x` and `Child::x`; an object with only numeric property names stays a JSON object; a backed enum stays its value; an object nested in an array is normalized too |
 | Limits | Payload over `maxBytes`; nesting over `maxDepth`; element count over `maxElements`; each limit raised via the builder and then passing |
-| Unrepresentable | Non-UTF-8 byte in a string; `d:NAN;`; `d:INF;`; `d:-INF;` |
+| Unrepresentable | Non-UTF-8 byte in a string; `d:NAN;`; `d:INF;`; `d:-INF;`; a non-backed enum case, rejected with a byte offset rather than reaching `JsonEncodingException` |
 | Diagnostics | Offset is byte-accurate; caret sits under the offending byte; `fix` text is present and non-generic |
 | API | `tryToJson` returns `null` instead of throwing; `isValid` never throws; `toArray` returns the PHP value; builder methods return new instances and leave the original unchanged |
 
@@ -416,10 +466,12 @@ wording can change without breaking the suite.
    `Serialized::make()->allowClasses([stdClass::class])->toJson(...)` returns `{}`.
 4. A 100 MB payload and a 500-level-deep payload both throw `LimitExceededException` without
    exhausting memory.
-5. `composer check` is green: Pint clean, PHPStan level max with zero errors, full suite passing,
-   and `composer test -- --coverage --min=100` reports 100% of `src/`.
-6. `composer require roelmagdaleno/serialized` in a fresh Laravel 12 app works with no extra wiring.
-7. `README.md` shows installation, the four verbs, the builder, and the exception hierarchy.
+5. `Serialized::make()->allowClasses([Money::class])->toJson(serialize(new Money(5, 'USD')))`
+   returns `{"amount": 5, "cur": "USD"}` — private and protected properties included, not `{}`.
+6. `composer check` is green: Pint clean, PHPStan level max with zero errors, full suite passing,
+   and `composer coverage` reports 100% of `src/`.
+7. `composer require roelmagdaleno/serialized` in a fresh Laravel 12 app works with no extra wiring.
+8. `README.md` shows installation, the four verbs, the builder, and the exception hierarchy.
 
 ## Out of Scope for 1.0
 
@@ -429,14 +481,24 @@ wording can change without breaking the suite.
 - Coercion flags (`->withInvalidUtf8Substitute()`, `->withNonFiniteAsNull()`). 1.0 rejects
   unrepresentable values outright; coercion is additive and can ship in 1.1 without a breaking change.
 - Streaming / chunked parsing for payloads larger than memory.
+- Emitting class names alongside normalized objects (`->withClassNames()`, adding a `__class` key
+  or an envelope). Additive, and it can ship in 1.1 without breaking the 1.0 output.
 
 ## Resolved Decisions
 
 1. **`composer.json` `version` field** — removed. Packagist derives versions from git tags.
 2. **`tryToJson` breadth** — catches `Throwable`, not just `SerializedException`.
 3. **CI** — none for 1.0. `composer check` run locally is the gate.
+4. **`composer.lock`** — untracked, as a library should be. `.gitignore` carries it.
+5. **Normalized objects become `stdClass`, not arrays** — keeps the object/array distinction the
+   payload drew, including for objects whose property names are all numeric.
+6. **Colliding demangled property names are qualified as `Class::name`, never dropped** — silently
+   preferring one of a parent/child private pair is the bug this stage exists to remove.
+7. **Class names stay out of the output** — a `__class` key can collide with a real property, and
+   `{}` for an empty object is the documented result.
+8. **Non-backed enums are rejected, not coerced** — consistent with 1.0 rejecting every value JSON
+   cannot carry. Rendering the case name is coercion, and belongs with the other 1.1 coercion flags.
 
 ## Open Questions
 
-1. **`composer.lock` is tracked in git.** For a library it pins nothing for consumers and only
-   causes merge noise. Untrack it (`git rm --cached composer.lock` + `.gitignore`)?
+None open.

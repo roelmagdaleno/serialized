@@ -6,6 +6,7 @@ namespace Serialized;
 
 use Serialized\Conversion\JsonEncoder;
 use Serialized\Conversion\SafeUnserializer;
+use Serialized\Conversion\ValueNormalizer;
 use Serialized\Exceptions\SerializedException;
 use Serialized\Parser\ParsedPayload;
 use Serialized\Parser\Parser;
@@ -30,6 +31,7 @@ final readonly class SerializedConverter
         private Parser $parser = new Parser,
         private PayloadPolicy $policy = new PayloadPolicy,
         private SafeUnserializer $unserializer = new SafeUnserializer,
+        private ValueNormalizer $normalizer = new ValueNormalizer,
         private JsonEncoder $encoder = new JsonEncoder,
     ) {}
 
@@ -40,7 +42,9 @@ final readonly class SerializedConverter
      */
     public function toJson(string $payload): string
     {
-        return $this->encoder->encode($this->toArray($payload), $this->options);
+        $value = $this->normalizer->normalize($this->toArray($payload));
+
+        return $this->encoder->encode($value, $this->options);
     }
 
     /**
@@ -197,6 +201,7 @@ final readonly class SerializedConverter
             $this->parser,
             $this->policy,
             $this->unserializer,
+            $this->normalizer,
             $this->encoder,
         );
     }

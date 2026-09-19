@@ -24,6 +24,7 @@ final readonly class PayloadPolicy
      */
     public function __construct(
         private JsonRepresentability $representability = new JsonRepresentability,
+        private ClassRestorability $restorability = new ClassRestorability,
     ) {}
 
     /**
@@ -39,7 +40,7 @@ final readonly class PayloadPolicy
         $actualBytes = strlen($payload);
 
         if ($actualBytes > $options->maxBytes) {
-            throw LimitExceededException::bytes($payload, $actualBytes, $options->maxBytes);
+            throw LimitExceededException::bytes($actualBytes, $options->maxBytes);
         }
     }
 
@@ -68,10 +69,18 @@ final readonly class PayloadPolicy
             if (! $allowList->allows($named['className'])) {
                 throw UnsafeSerializedDataException::disallowedClass($payload, $named['offset'], $named['className']);
             }
+
+            if (! $this->restorability->isLoadable($named['className'])) {
+                throw UnsafeSerializedDataException::unloadableClass($payload, $named['offset'], $named['className']);
+            }
+
+            if (! $this->restorability->canRestore($named['className'], $named['type'])) {
+                throw UnsafeSerializedDataException::unrestorableClass($payload, $named['offset'], $named['className']);
+            }
         }
 
-        if ($parsed->hasReferences) {
-            throw UnsafeSerializedDataException::references($payload);
+        if ($parsed->referenceOffset !== null) {
+            throw UnsafeSerializedDataException::references($payload, $parsed->referenceOffset);
         }
 
         $this->representability->enforce($payload, $tokens);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Serialized\Policy;
 
+use BackedEnum;
 use Serialized\Exceptions\UnrepresentableValueException;
 use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\TokenType;
@@ -23,7 +24,7 @@ final class JsonRepresentability
      *
      * @param  list<Token>  $tokens
      *
-     * @throws UnrepresentableValueException when a string is not UTF-8 or a float is not finite
+     * @throws UnrepresentableValueException when a value has no JSON equivalent
      */
     public function enforce(string $payload, array $tokens): void
     {
@@ -43,6 +44,15 @@ final class JsonRepresentability
 
         if ($token->type === TokenType::Float && in_array($token->literal, self::NON_FINITE_FLOATS, strict: true)) {
             throw UnrepresentableValueException::nonFiniteFloat(
+                $payload,
+                $token->literalOffset ?? $token->offset,
+                $token->literal,
+            );
+        }
+
+        // The class is known to be loaded: the policy rejects an allow-listed class it cannot load.
+        if ($token->type === TokenType::Enum && ! is_a((string) $token->className, BackedEnum::class, allow_string: true)) {
+            throw UnrepresentableValueException::nonBackedEnum(
                 $payload,
                 $token->literalOffset ?? $token->offset,
                 $token->literal,

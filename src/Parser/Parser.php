@@ -25,43 +25,49 @@ final class Parser
      */
     public function parse(string $payload, array $tokens): ParsedPayload
     {
-        /** @var list<ArrayFrame> $openArrays */
-        $openArrays = [];
+        /** @var list<StructureFrame> $openStructures */
+        $openStructures = [];
         $deepestLevel = 0;
         $elementCount = 0;
         $rootCompleted = false;
         $classNames = [];
-        $hasReferences = false;
+        $referenceOffset = null;
 
         foreach ($tokens as $token) {
             if ($token->type === TokenType::Close) {
-                $this->closeArray($payload, $openArrays, $token);
-                $rootCompleted = $openArrays === [];
+                $this->closeStructure($payload, $openStructures, $token);
+                $rootCompleted = $openStructures === [];
 
                 continue;
             }
 
-            $this->fillSlot($payload, $openArrays, $token, $rootCompleted);
+            $this->fillSlot($payload, $this->innermostFrame($openStructures), $token, $rootCompleted);
 
             if ($token->className !== null) {
-                $classNames[] = ['className' => $token->className, 'offset' => $token->offset];
+                $classNames[] = [
+                    'className' => $token->className,
+                    'offset' => $token->offset,
+                    'type' => $token->type,
+                ];
             }
 
-            $hasReferences = $hasReferences || $token->type->isReference();
+            if ($referenceOffset === null && $token->type->isReference()) {
+                $referenceOffset = $token->offset;
+            }
 
             if ($token->type->opensStructure()) {
-                $openArrays[] = new ArrayFrame($token->offset, $token->declaredCount ?? 0);
+                $openStructures[] = new StructureFrame($token->offset, $token->declaredCount ?? 0);
             } else {
-                $rootCompleted = $openArrays === [];
+                $rootCompleted = $openStructures === [];
             }
 
             $elementCount++;
-            $deepestLevel = max($deepestLevel, count($openArrays) + 1);
+            $deepestLevel = max($deepestLevel, count($openStructures) + 1);
         }
 
-        $unclosed = end($openArrays);
+        $unclosed = $this->innermostFrame($openStructures);
 
-        if ($unclosed !== false) {
+        if ($unclosed !== null) {
             throw InvalidSerializedDataException::unclosedArray($payload, $unclosed->offset);
         }
 
@@ -69,20 +75,19 @@ final class Parser
             depth: $deepestLevel,
             elementCount: $elementCount,
             classNames: $classNames,
-            hasReferences: $hasReferences,
+            referenceOffset: $referenceOffset,
         );
     }
 
     /**
-     * Accounts for a value or key token against the array that should contain it.
+     * Accounts for a value or key token against the structure that should contain it.
      *
-     * @param  list<ArrayFrame>  $openArrays
+     * A token with no open structure around it is the root value, unless the root has
+     * already been completed — then the payload holds more than the one value it may.
      */
-    private function fillSlot(string $payload, array $openArrays, Token $token, bool $rootCompleted): void
+    private function fillSlot(string $payload, ?StructureFrame $currentStructure, Token $token, bool $rootCompleted): void
     {
-        $currentArray = end($openArrays);
-
-        if ($currentArray === false) {
+        if ($currentStructure === null) {
             if ($rootCompleted) {
                 throw InvalidSerializedDataException::trailingBytes($payload, $token->offset);
             }
@@ -90,41 +95,53 @@ final class Parser
             return;
         }
 
-        if ($currentArray->isFull()) {
+        if ($currentStructure->isFull()) {
             throw InvalidSerializedDataException::elementCountMismatch(
                 $payload,
-                $currentArray->offset,
-                $currentArray->declaredCount,
-                $currentArray->filledPairs() + 1,
+                $currentStructure->offset,
+                $currentStructure->declaredCount,
+                $currentStructure->filledPairs() + 1,
             );
         }
 
-        if ($currentArray->expectsKey() && ! $token->type->isValidArrayKey()) {
+        if ($currentStructure->expectsKey() && ! $token->type->isValidArrayKey()) {
             throw InvalidSerializedDataException::nonScalarArrayKey($payload, $token->offset, $token->type);
         }
 
-        $currentArray->fillSlot();
+        $currentStructure->fillSlot();
     }
 
     /**
-     * Closes the innermost open array, rejecting a brace that closes nothing.
+     * Returns the structure a token currently sits inside, or null at the root.
      *
-     * @param  list<ArrayFrame>  $openArrays
+     * @param  list<StructureFrame>  $openStructures
      */
-    private function closeArray(string $payload, array &$openArrays, Token $token): void
+    private function innermostFrame(array $openStructures): ?StructureFrame
     {
-        $currentArray = array_pop($openArrays);
+        $frame = end($openStructures);
 
-        if ($currentArray === null) {
+        return $frame === false ? null : $frame;
+    }
+
+    /**
+     * Closes the innermost open structure, rejecting a brace that closes nothing.
+     *
+     * @param  list<StructureFrame>  $openStructures
+     */
+    private function closeStructure(string $payload, array &$openStructures, Token $token): void
+    {
+        $currentStructure = array_pop($openStructures);
+
+        if ($currentStructure === null) {
             throw InvalidSerializedDataException::unbalancedClose($payload, $token->offset);
         }
 
-        if (! $currentArray->isFull()) {
+        if (! $currentStructure->isFull()) {
             throw InvalidSerializedDataException::elementCountMismatch(
                 $payload,
-                $currentArray->offset,
-                $currentArray->declaredCount,
-                $currentArray->filledPairs(),
+                $currentStructure->offset,
+                $currentStructure->declaredCount,
+                $currentStructure->filledPairs(),
             );
         }
     }

@@ -94,8 +94,8 @@ try {
 | Exception | Thrown when |
 |---|---|
 | `InvalidSerializedDataException` | Malformed payload: truncated token, length mismatch, unbalanced braces, wrong element count, trailing bytes |
-| `UnsafeSerializedDataException` | An object of a class you have not allowed, or a reference (`R:`/`r:`) |
-| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF` |
+| `UnsafeSerializedDataException` | An object of a class you have not allowed, a class PHP cannot load or restore, or a reference (`R:`/`r:`) |
+| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case |
 | `LimitExceededException` | `maxBytes`, `maxDepth` or `maxElements` exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation |
 
@@ -122,8 +122,34 @@ filesystem, a database, or `unlink()`, allowing it hands them that method. Allow
 payloads from a source you control.
 
 The rejection happens *before* `unserialize()` is called, so a disallowed class is never
-instantiated, and a `__PHP_Incomplete_Class` never reaches your code. See [SECURITY.md](SECURITY.md)
-for the full model.
+instantiated, and a `__PHP_Incomplete_Class` never reaches your code. Allowing a class PHP cannot
+actually rebuild — a name that is not autoloadable here, an abstract class, an interface — is
+refused for the same reason: you would get an incomplete class or a raw `Error` instead of the
+class you allowed. See [SECURITY.md](SECURITY.md) for the full model.
+
+### Every property is converted, not just the public ones
+
+`json_encode()` reads an object's public properties and drops the rest. This package converts the
+object first, so private and protected properties survive:
+
+```php
+final class Money
+{
+    public function __construct(
+        private int $amount = 5,
+        protected string $currency = 'USD',
+    ) {}
+}
+
+Serialized::make()->allowClasses([Money::class])->compact()->toJson(serialize(new Money));
+// {"amount":5,"currency":"USD"}
+```
+
+Property names are written as you declared them. The exception is a name declared twice in one
+hierarchy — a class redeclaring a parent's private property — where both are kept and qualified as
+`Parent::balance` and `Child::balance`, so neither value is lost.
+
+`toArray()` is untouched by this: it returns the real object, not a converted one.
 
 ## Contributing
 

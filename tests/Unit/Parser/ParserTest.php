@@ -17,7 +17,7 @@ it('reports one element at depth one for a scalar payload', function (string $pa
     expect($parsed->depth)->toBe(1)
         ->and($parsed->elementCount)->toBe(1)
         ->and($parsed->classNames)->toBe([])
-        ->and($parsed->hasReferences)->toBeFalse();
+        ->and($parsed->referenceOffset)->toBeNull();
 })->with(['N;', 'b:1;', 'i:42;', 'd:1.5;', 's:6:"Chrome";']);
 
 it('rejects bytes trailing a complete value', function () {
@@ -33,5 +33,5 @@ it('rejects bytes trailing a complete value', function () {
 it('carries only metadata, never unserialized values', function () {
     $properties = array_keys(get_object_vars(parse('s:6:"Chrome";')));
 
-    expect($properties)->toBe(['depth', 'elementCount', 'classNames', 'hasReferences']);
+    expect($properties)->toBe(['depth', 'elementCount', 'classNames', 'referenceOffset']);
 });

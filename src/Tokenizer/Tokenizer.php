@@ -83,7 +83,7 @@ final class Tokenizer
         $this->expectByte($payload, $offset + 1, ':');
 
         $literalStart = $offset + 2;
-        $terminator = $this->findByte($payload, ';', $literalStart)
+        $terminator = $this->findSequence($payload, ';', $literalStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ';');
 
         $literal = substr($payload, $literalStart, $terminator - $literalStart);
@@ -113,7 +113,7 @@ final class Tokenizer
         $this->expectByte($payload, $offset + 1, ':');
 
         $lengthStart = $offset + 2;
-        $lengthEnd = $this->findByte($payload, ':', $lengthStart)
+        $lengthEnd = $this->findSequence($payload, ':', $lengthStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
         $declaredLength = $this->readDeclaredLength($payload, $lengthStart, $lengthEnd);
@@ -128,7 +128,7 @@ final class Tokenizer
                 $payload,
                 $lengthStart,
                 $declaredLength,
-                $this->actualLengthOf($payload, $valueStart, $availableBytes),
+                $this->actualLengthOf($payload, $valueStart),
             );
         }
 
@@ -161,7 +161,7 @@ final class Tokenizer
         $this->expectByte($payload, $offset + 1, ':');
 
         $countStart = $offset + 2;
-        $countEnd = $this->findByte($payload, ':', $countStart)
+        $countEnd = $this->findSequence($payload, ':', $countStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
         $declaredCount = $this->readUnsignedInteger($payload, $countStart, $countEnd);
@@ -194,7 +194,7 @@ final class Tokenizer
         [$className, $afterClassName] = $this->readClassName($payload, $offset);
 
         $countStart = $afterClassName + 1;
-        $countEnd = $this->findByte($payload, ':', $countStart)
+        $countEnd = $this->findSequence($payload, ':', $countStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
         $declaredCount = $this->readUnsignedInteger($payload, $countStart, $countEnd);
@@ -228,7 +228,7 @@ final class Tokenizer
         [$className, $afterClassName] = $this->readClassName($payload, $offset);
 
         $lengthStart = $afterClassName + 1;
-        $lengthEnd = $this->findByte($payload, ':', $lengthStart)
+        $lengthEnd = $this->findSequence($payload, ':', $lengthStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
         $declaredLength = $this->readDeclaredLength($payload, $lengthStart, $lengthEnd);
@@ -278,6 +278,7 @@ final class Tokenizer
             substr($payload, $offset, $afterCaseName + 1 - $offset),
             $caseName,
             className: $separator === false ? $caseName : substr($caseName, 0, $separator),
+            literalOffset: $afterCaseName - 1 - strlen($caseName),
         );
     }
 
@@ -291,7 +292,7 @@ final class Tokenizer
         $this->expectByte($payload, $offset + 1, ':');
 
         $lengthStart = $offset + 2;
-        $lengthEnd = $this->findByte($payload, ':', $lengthStart)
+        $lengthEnd = $this->findSequence($payload, ':', $lengthStart)
             ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
 
         $declaredLength = $this->readDeclaredLength($payload, $lengthStart, $lengthEnd);
@@ -306,7 +307,7 @@ final class Tokenizer
                 $payload,
                 $lengthStart,
                 $declaredLength,
-                ($this->findByte($payload, '"', $nameStart) ?? $nameStart) - $nameStart,
+                ($this->findSequence($payload, '"', $nameStart) ?? $nameStart) - $nameStart,
                 $payload[$offset],
             );
         }
@@ -349,7 +350,7 @@ final class Tokenizer
         int $declaredLength,
         int $closingQuote,
     ): never {
-        $terminator = $this->findByte($payload, '";', $valueStart);
+        $terminator = $this->findSequence($payload, '";', $valueStart);
 
         if ($terminator === null) {
             $this->expectByte($payload, $closingQuote, '"');
@@ -365,27 +366,32 @@ final class Tokenizer
 
     /**
      * Counts the value bytes actually present, ignoring a trailing `";` if there is one.
+     *
+     * Reads only the bytes left for the value: they run to the end of the payload, because
+     * this is asked only once the declared length has been found to overrun it.
      */
-    private function actualLengthOf(string $payload, int $valueStart, int $availableBytes): int
+    private function actualLengthOf(string $payload, int $valueStart): int
     {
-        return str_ends_with($payload, '";') && strlen($payload) - $valueStart >= 2
-            ? $availableBytes - 2
-            : $availableBytes;
+        $remaining = substr($payload, $valueStart);
+
+        return str_ends_with($remaining, '";')
+            ? strlen($remaining) - 2
+            : strlen($remaining);
     }
 
     /**
-     * Finds the next occurrence of a byte, or null when there is none.
+     * Finds the next occurrence of a byte sequence, or null when there is none.
      *
      * Guards the search offset itself: strpos() raises a ValueError when asked to
      * start past the end of the string, which a truncated payload does routinely.
      */
-    private function findByte(string $payload, string $byte, int $from): ?int
+    private function findSequence(string $payload, string $sequence, int $from): ?int
     {
         if ($from >= strlen($payload)) {
             return null;
         }
 
-        $found = strpos($payload, $byte, $from);
+        $found = strpos($payload, $sequence, $from);
 
         return $found === false ? null : $found;
     }

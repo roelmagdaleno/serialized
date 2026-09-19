@@ -2,35 +2,38 @@
 
 declare(strict_types=1);
 
+use Serialized\Tokenizer\TokenType;
+
 it('records every class the payload names, with its offset', function () {
     $parsed = parse('O:8:"stdClass":1:{s:1:"a";i:1;}');
 
-    expect($parsed->classNames)->toBe([['className' => 'stdClass', 'offset' => 0]]);
+    expect($parsed->classNames)
+        ->toBe([['className' => 'stdClass', 'offset' => 0, 'type' => TokenType::Object]]);
 });
 
 it('records classes nested inside arrays and other objects', function () {
     $parsed = parse('a:1:{i:0;O:8:"stdClass":1:{s:1:"a";O:8:"DateTime":0:{}}}');
 
     expect($parsed->classNames)->toBe([
-        ['className' => 'stdClass', 'offset' => 9],
-        ['className' => 'DateTime', 'offset' => 35],
+        ['className' => 'stdClass', 'offset' => 9, 'type' => TokenType::Object],
+        ['className' => 'DateTime', 'offset' => 35, 'type' => TokenType::Object],
     ]);
 });
 
 it('records a custom-serialized object as a named class', function () {
     expect(parse('C:8:"stdClass":4:{data}')->classNames)
-        ->toBe([['className' => 'stdClass', 'offset' => 0]]);
+        ->toBe([['className' => 'stdClass', 'offset' => 0, 'type' => TokenType::CustomObject]]);
 });
 
-it('flags a payload that contains references', function (string $payload) {
-    expect(parse($payload)->hasReferences)->toBeTrue();
+it('records where the first reference sits', function (string $payload) {
+    expect(parse($payload)->referenceOffset)->toBe(15);
 })->with([
     'back reference' => ['a:2:{i:0;N;i:1;R:2;}'],
     'value reference' => ['a:2:{i:0;N;i:1;r:2;}'],
 ]);
 
 it('reports no references for a payload without them', function () {
-    expect(parse(chromePayload())->hasReferences)->toBeFalse();
+    expect(parse(chromePayload())->referenceOffset)->toBeNull();
 });
 
 it('counts an object as one level of nesting, like an array', function () {

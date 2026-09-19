@@ -25,6 +25,23 @@ final class UnrepresentableValueException extends RuntimeException implements Se
     }
 
     /**
+     * A non-backed enum case has no value to stand in for it in JSON.
+     */
+    public static function nonBackedEnum(string $payload, int $offset, string $caseName): self
+    {
+        return self::fromDiagnostic(new Diagnostic(
+            payload: $payload,
+            offset: $offset,
+            reason: sprintf(
+                'The enum case %s at offset %d is not backed, so it has no JSON representation.',
+                $caseName,
+                $offset,
+            ),
+            fix: 'Give the enum a backing type, or replace the case with a string before serializing.',
+        ));
+    }
+
+    /**
      * A float is NAN or infinite, neither of which JSON can express.
      */
     public static function nonFiniteFloat(string $payload, int $offset, string $literal): self

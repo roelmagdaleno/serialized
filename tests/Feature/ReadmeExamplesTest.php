@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Serialized\Exceptions\SerializedException;
 use Serialized\Exceptions\UnsafeSerializedDataException;
 use Serialized\Serialized;
+use Tests\Support\Money;
 
 it('converts the README opening example', function () {
     expect(Serialized::toJson('a:2:{s:4:"name";s:6:"Chrome";s:6:"mobile";b:0;}'))->toBe(<<<'JSON'
@@ -58,6 +59,12 @@ it('runs the README builder example', function () {
         ->and($converter->options()->maxBytes)->toBe(1_000_000)
         ->and($converter->options()->maxDepth)->toBe(32)
         ->and($converter->options()->maxElements)->toBe(50_000);
+});
+
+it('converts every property of an allowed object, as the README shows', function () {
+    $json = Serialized::make()->allowClasses([Money::class])->compact()->toJson(serialize(new Money));
+
+    expect($json)->toBe('{"amount":5,"currency":"USD"}');
 });
 
 it('documents the defaults the README lists', function () {
