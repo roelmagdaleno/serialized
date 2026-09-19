@@ -53,6 +53,14 @@ it('names the declared and actual element counts', function () {
         ->and($diagnostic->fix)->toContain('a:1');
 });
 
+it('calls a bad key in an array an array key', function () {
+    $diagnostic = diagnosticFor(fn () => parse('a:1:{N;N;}'));
+
+    expect($diagnostic->reason)->toContain('array key')
+        ->and($diagnostic->reason)->not->toContain('property name')
+        ->and($diagnostic->fix)->toContain('array key');
+});
+
 it('does not exhaust the stack on a deeply nested payload', function () {
     $payload = str_repeat('a:1:{i:0;', 10_000).'N;'.str_repeat('}', 10_000);
 

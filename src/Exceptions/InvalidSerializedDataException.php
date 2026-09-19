@@ -178,16 +178,32 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     }
 
     /**
-     * A value that PHP cannot use as an array key appears in a key position.
+     * A value PHP cannot use as a key appears in a key slot.
      */
-    public static function nonScalarArrayKey(string $payload, int $offset, TokenType $type): self
+    public static function nonScalarKey(string $payload, Token $key, Token $header): self
     {
+        $slot = self::keySlotOf($header);
+
         return self::fromDiagnostic(new Diagnostic(
             payload: $payload,
-            offset: $offset,
-            reason: sprintf('A %s is used as an array key at offset %d.', $type->label(), $offset),
-            fix: 'Array keys must be integers or strings; replace the key with one of those.',
+            offset: $key->offset,
+            reason: sprintf('A %s is used as %s at offset %d.', $key->type->label(), $slot, $key->offset),
+            fix: sprintf(
+                'Only an integer or a string can be %s; replace the value at offset %d with one of those.',
+                $slot,
+                $key->offset,
+            ),
         ));
+    }
+
+    /**
+     * Names the kind of slot a structure fills with its keys, article included.
+     *
+     * Only an object header carries a class name; an array header has none.
+     */
+    private static function keySlotOf(Token $header): string
+    {
+        return $header->className === null ? 'an array key' : 'a property name';
     }
 
     /**

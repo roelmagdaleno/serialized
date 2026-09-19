@@ -8,8 +8,8 @@ it('labels every token type for diagnostics', function (TokenType $type) {
     expect($type->label())->not->toBeEmpty();
 })->with(TokenType::cases());
 
-it('accepts only integers and strings as array keys', function () {
-    $keyable = array_values(array_filter(TokenType::cases(), static fn (TokenType $type): bool => $type->isValidArrayKey()));
+it('accepts only integers and strings as keys', function () {
+    $keyable = array_values(array_filter(TokenType::cases(), static fn (TokenType $type): bool => $type->isValidKey()));
 
     expect($keyable)->toEqualCanonicalizing([TokenType::Integer, TokenType::String]);
 });

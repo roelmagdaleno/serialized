@@ -23,11 +23,11 @@ enum TokenType: string
     case Enum = 'E';
 
     /**
-     * Tells whether a token of this type may be used as an array key.
+     * Tells whether a token of this type may be used as an array key or property name.
      *
-     * PHP array keys are only ever integers or strings, whatever the payload claims.
+     * Both are only ever integers or strings, whatever the payload claims.
      */
-    public function isValidArrayKey(): bool
+    public function isValidKey(): bool
     {
         return $this === self::Integer || $this === self::String;
     }

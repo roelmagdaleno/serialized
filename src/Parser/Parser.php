@@ -103,8 +103,8 @@ final class Parser
             );
         }
 
-        if ($currentStructure->expectsKey() && ! $token->type->isValidArrayKey()) {
-            throw InvalidSerializedDataException::nonScalarArrayKey($payload, $token->offset, $token->type);
+        if ($currentStructure->expectsKey() && ! $token->type->isValidKey()) {
+            throw InvalidSerializedDataException::nonScalarKey($payload, $token, $currentStructure->token);
         }
 
         $currentStructure->fillSlot();

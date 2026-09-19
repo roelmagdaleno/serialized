@@ -41,6 +41,14 @@ it('names the object header to change when it holds more than it declares', func
         ->and($diagnostic->fix)->toContain('O:8:"stdClass":2');
 });
 
+it('calls a bad key in an object a property name, not an array key', function () {
+    $diagnostic = diagnosticFor(fn () => parse('O:8:"stdClass":1:{N;i:1;}'));
+
+    expect($diagnostic->reason)->toContain('property name')
+        ->and($diagnostic->reason)->not->toContain('array key')
+        ->and($diagnostic->fix)->toContain('property name');
+});
+
 it('names the object when it is never closed', function () {
     $diagnostic = diagnosticFor(fn () => parse('O:8:"stdClass":1:{s:1:"a";i:1;'));
 
