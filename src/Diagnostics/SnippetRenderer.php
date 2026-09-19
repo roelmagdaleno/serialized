@@ -43,9 +43,6 @@ final class SnippetRenderer
     }
 
     /**
-     * @return array{int, int}
-     */
-    /**
      * Picks the slice of the payload to show, centred on the offset.
      *
      * @return array{int, int} the start and end byte offsets of the slice
