@@ -6,6 +6,7 @@ namespace Serialized\Exceptions;
 
 use RuntimeException;
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Diagnostics\DiagnosticCode;
 
 final class LimitExceededException extends RuntimeException implements SerializedException
 {
@@ -20,14 +21,13 @@ final class LimitExceededException extends RuntimeException implements Serialize
     public static function bytes(int $actualBytes, int $configuredLimit): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MaxBytesExceeded,
             payload: '',
             offset: 0,
-            reason: sprintf(
-                'The payload is %d bytes, over the configured limit of %d.',
-                $actualBytes,
-                $configuredLimit,
-            ),
-            fix: sprintf('Raise the limit with ->withMaxBytes(%d), or convert a smaller payload.', $actualBytes),
+            context: [
+                'actualBytes' => $actualBytes,
+                'configuredLimit' => $configuredLimit,
+            ],
         ));
     }
 
@@ -37,20 +37,16 @@ final class LimitExceededException extends RuntimeException implements Serialize
     public static function depth(string $payload, int $actualDepth, int $configuredLimit): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MaxDepthExceeded,
             payload: $payload,
             offset: 0,
-            reason: sprintf(
-                'The payload nests %d levels deep, over the configured limit of %d.',
-                $actualDepth,
-                $configuredLimit,
-            ),
-            fix: sprintf('Raise the limit with ->withMaxDepth(%d), or flatten the payload.', $actualDepth),
+            context: [
+                'actualDepth' => $actualDepth,
+                'configuredLimit' => $configuredLimit,
+            ],
         ));
     }
 
-    /**
-     * The payload holds more values than the configured maximum.
-     */
     /**
      * Lexing stopped at the element ceiling instead of counting the whole payload.
      *
@@ -60,13 +56,10 @@ final class LimitExceededException extends RuntimeException implements Serialize
     public static function elementCeiling(string $payload, int $configuredLimit): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MaxElementsExceeded,
             payload: $payload,
             offset: 0,
-            reason: sprintf(
-                'The payload holds more than %d elements, the configured limit.',
-                $configuredLimit,
-            ),
-            fix: 'Raise the limit with ->withMaxElements(), or convert less data.',
+            context: ['configuredLimit' => $configuredLimit],
         ));
     }
 }

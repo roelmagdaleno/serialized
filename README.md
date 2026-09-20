@@ -85,11 +85,72 @@ try {
 } catch (SerializedException $exception) {
     $diagnostic = $exception->diagnostic();
 
+    $diagnostic?->code;    // DiagnosticCode::LengthMismatch
     $diagnostic?->offset;  // 18
     $diagnostic?->reason;  // 'String length mismatch at offset 18: declared 6 bytes, found 5.'
     $diagnostic?->fix;     // 'Change s:6 to s:5, or restore the missing bytes in the value.'
+    $diagnostic?->context; // ['declaredByteLength' => 6, 'foundByteLength' => 5, 'prefix' => 's']
 }
 ```
+
+### Write your own messages
+
+The `reason` and `fix` above are a default, not a ceiling. `code` is a stable enum case — an
+i18n key, a telemetry label, something to `match` on — and `context` carries the facts the
+sentence was built from, so you can word the failure however your product needs to:
+
+```php
+use Serialized\Diagnostics\DiagnosticCode;
+
+$message = match ($diagnostic->code) {
+    DiagnosticCode::LengthMismatch => __('errors.length', [
+        'declared' => $diagnostic->context['declaredByteLength'],
+        'found' => $diagnostic->context['foundByteLength'],
+        'offset' => $diagnostic->offset,
+    ]),
+    DiagnosticCode::DisallowedClass => "Blocked: {$diagnostic->context['className']}",
+    default => $diagnostic->reason,
+};
+```
+
+The byte `offset` is never repeated inside `context` — the diagnostic already owns it. To
+re-render the package's own message, caret snippet included, call
+`DiagnosticMessage::render($diagnostic)`.
+
+Every code and the context it carries:
+
+| `DiagnosticCode` | `context` |
+|---|---|
+| `EmptyPayload` | — |
+| `UnknownTypePrefix` | `prefix` |
+| `TruncatedPayload` | `expected` |
+| `UnexpectedByte` | `expected`, `found` |
+| `MalformedValue` | `typeLabel`, `literal` |
+| `MalformedLength` | `literal` |
+| `MalformedElementCount` | `literal` |
+| `ElementCountMismatch` | `structureLabel`, `className` (null for an array), `declaredCount`, `actualCount` |
+| `ImpossibleElementCount` | `declaredCount`, `remainingByteCount` |
+| `UnbalancedClose` | — |
+| `UnclosedStructure` | `structureLabel` |
+| `NonScalarKey` | `keyTypeLabel`, `keySlot` |
+| `RejectedByPhp` | `phpMessage` |
+| `ValueOverrunsDeclaredLength` | — |
+| `TrailingBytes` | — |
+| `LengthMismatch` | `declaredByteLength`, `foundByteLength`, `prefix` (null for a class name) |
+| `DisallowedClass` | `className` |
+| `UnloadableClass` | `className` |
+| `UnrestorableClass` | `className` |
+| `ContainsReference` | — |
+| `NonUtf8String` | — |
+| `NonBackedEnum` | `caseName` |
+| `UnusablePropertyName` | — |
+| `NonFiniteFloat` | `literal` |
+| `MaxBytesExceeded` | `actualBytes`, `configuredLimit` |
+| `MaxDepthExceeded` | `actualDepth`, `configuredLimit` |
+| `MaxElementsExceeded` | `configuredLimit` |
+
+`JsonEncodingException` is the one exception with no `Diagnostic`, and so no code: `json_encode`
+failing after validation cannot be traced to a byte.
 
 | Exception | Thrown when |
 |---|---|

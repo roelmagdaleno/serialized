@@ -289,9 +289,19 @@ can `catch (SerializedException $e)` for everything, or narrow to one case.
 | `LimitExceededException` | `maxBytes`, `maxDepth`, or `maxElements` exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation (should be unreachable; wraps `JsonException`) |
 
-Every exception carries a `Diagnostic` value object — the `payload`, the byte `offset`, the
-`reason` and the `fix` — rendered into the message by a shared `SnippetRenderer`, and readable
+Every exception carries a `Diagnostic` value object — the `payload`, the byte `offset`, a
+`DiagnosticCode`, a `context` map of the facts behind the failure, and the `reason` and `fix`
+sentences built from them — rendered into the message by a shared `SnippetRenderer`, and readable
 programmatically via `$e->diagnostic()` so unserialize.dev can highlight the exact byte.
+
+`DiagnosticCode` is a string-backed enum with one case per failure, and it is the only place the
+default wording lives: `reason()` and `fix()` are methods on the enum, and a `Diagnostic` derives
+both from its code in the constructor, so the two can never disagree. The code is the stable
+identifier a consumer matches on — an i18n key, a telemetry label, a `match` subject — and
+`context` carries the facts the sentence was built from (`declaredByteLength`, `className`,
+`configuredLimit`, …) so a consumer can write its own wording without parsing English. The
+context is an `array<string, string|int|bool|null>`; its keys are documented per code in README.
+The byte `offset` is never duplicated into `context`, because the `Diagnostic` already owns it.
 
 `SerializedException::diagnostic()` returns `?Diagnostic`, because `JsonEncodingException` cannot
 trace its failure to a byte. Every other exception narrows the return type to `Diagnostic` and
@@ -361,7 +371,8 @@ src/
     JsonEncoder.php                       Wraps json_encode() + flag handling
 
   Diagnostics/
-    Diagnostic.php                        readonly: payload, offset, reason, fix
+    Diagnostic.php                        readonly: code, payload, offset, context, reason, fix
+    DiagnosticCode.php                    enum: one case per failure + the default wording
     SnippetRenderer.php                   Renders the caret snippet shown above
     DiagnosticMessage.php                 Assembles reason + snippet + fix into the message
 
@@ -410,15 +421,10 @@ enum TokenType: string
     case Null_ = 'N';
     case Reference = 'R';
 
-    public static function fromPrefix(string $prefix, int $offset): self
+    public static function fromPrefix(string $prefix, string $payload, int $offset): self
     {
-        return self::tryFrom($prefix) ?? throw new InvalidSerializedDataException(
-            new Diagnostic(
-                offset: $offset,
-                reason: sprintf('Unknown type prefix "%s".', $prefix),
-                fix: 'Expected one of: a, O, s, i, d, b, N, R.',
-            ),
-        );
+        return self::tryFrom($prefix)
+            ?? throw InvalidSerializedDataException::unknownTypePrefix($payload, $offset);
     }
 
     public function isScalar(): bool
@@ -449,8 +455,10 @@ enum TokenType: string
 - `match` over `switch`; enums over class constants; `readonly` over getters-with-no-logic.
 - No duplicated logic. The caret snippet is rendered in exactly one place (`SnippetRenderer`);
   the allowed-class decision lives in exactly one place (`ClassAllowList`).
-- Exception messages are built by the exception's own named constructors
-  (`InvalidSerializedDataException::lengthMismatch(...)`), never assembled at the throw site.
+- Exceptions are built by their own named constructors
+  (`InvalidSerializedDataException::lengthMismatch(...)`), never assembled at the throw site. A
+  named constructor gathers the facts into a `Diagnostic`'s context; the wording built from them
+  lives on `DiagnosticCode` and nowhere else.
 - Every method carries a docblock — one concise sentence on what it does, plus the *why* when the
   code does not make it obvious. Private methods and named constructors included.
 - Comments are concise. No changelog comments — no "changed X", "was Y", "added in 1.2", no

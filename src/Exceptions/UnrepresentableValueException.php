@@ -6,6 +6,7 @@ namespace Serialized\Exceptions;
 
 use RuntimeException;
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Diagnostics\DiagnosticCode;
 
 final class UnrepresentableValueException extends RuntimeException implements SerializedException
 {
@@ -17,10 +18,9 @@ final class UnrepresentableValueException extends RuntimeException implements Se
     public static function nonUtf8String(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::NonUtf8String,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('Non-UTF-8 bytes in the string at offset %d. JSON requires valid UTF-8.', $offset),
-            fix: 'Base64-encode this value before serializing it, or repair its encoding.',
         ));
     }
 
@@ -30,20 +30,13 @@ final class UnrepresentableValueException extends RuntimeException implements Se
     public static function nonBackedEnum(string $payload, int $offset, string $caseName): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::NonBackedEnum,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'The enum case %s at offset %d is not backed, so it has no JSON representation.',
-                $caseName,
-                $offset,
-            ),
-            fix: 'Give the enum a backing type, or replace the case with a string before serializing.',
+            context: ['caseName' => $caseName],
         ));
     }
 
-    /**
-     * A float is NAN or infinite, neither of which JSON can express.
-     */
     /**
      * A property name holds a NUL byte that demangling does not remove.
      *
@@ -53,23 +46,22 @@ final class UnrepresentableValueException extends RuntimeException implements Se
     public static function unusablePropertyName(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::UnusablePropertyName,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'The property name at offset %d holds a NUL byte that is not PHP\'s private or protected spelling.',
-                $offset,
-            ),
-            fix: 'Remove the NUL byte from the property name, or drop the property before serializing.',
         ));
     }
 
+    /**
+     * A float is NAN or infinite, neither of which JSON can express.
+     */
     public static function nonFiniteFloat(string $payload, int $offset, string $literal): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::NonFiniteFloat,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('Float %s at offset %d has no JSON representation.', $literal, $offset),
-            fix: 'Replace the value with null, a string, or a finite number before serializing.',
+            context: ['literal' => $literal],
         ));
     }
 }

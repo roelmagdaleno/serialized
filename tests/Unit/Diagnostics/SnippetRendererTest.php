@@ -3,15 +3,15 @@
 declare(strict_types=1);
 
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Diagnostics\DiagnosticCode;
 use Serialized\Diagnostics\SnippetRenderer;
 
 function renderSnippet(string $payload, int $offset): string
 {
     return new SnippetRenderer()->render(new Diagnostic(
+        code: DiagnosticCode::UnbalancedClose,
         payload: $payload,
         offset: $offset,
-        reason: 'Something is wrong.',
-        fix: 'Do something else.',
     ));
 }
 

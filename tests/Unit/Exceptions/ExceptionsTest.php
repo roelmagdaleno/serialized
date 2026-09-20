@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Diagnostics\DiagnosticCode;
 use Serialized\Exceptions\InvalidSerializedDataException;
 use Serialized\Exceptions\JsonEncodingException;
 use Serialized\Exceptions\LimitExceededException;
@@ -24,6 +25,12 @@ it('reports a string length mismatch with a byte-accurate diagnostic', function 
     $exception = InvalidSerializedDataException::lengthMismatch('s:6:"Chrom";', 2, 6, 5);
 
     expect($exception->diagnostic()->offset)->toBe(2)
+        ->and($exception->diagnostic()->code)->toBe(DiagnosticCode::LengthMismatch)
+        ->and($exception->diagnostic()->context)->toBe([
+            'declaredByteLength' => 6,
+            'foundByteLength' => 5,
+            'prefix' => 's',
+        ])
         ->and($exception->diagnostic()->reason)->toContain('declared 6')
         ->and($exception->diagnostic()->reason)->toContain('found 5')
         ->and($exception->diagnostic()->fix)->toContain('s:5');
@@ -33,6 +40,8 @@ it('names the class and offset when rejecting an object', function () {
     $exception = UnsafeSerializedDataException::disallowedClass('O:8:"stdClass":0:{}', 0, 'stdClass');
 
     expect($exception->diagnostic()->offset)->toBe(0)
+        ->and($exception->diagnostic()->code)->toBe(DiagnosticCode::DisallowedClass)
+        ->and($exception->diagnostic()->context)->toBe(['className' => 'stdClass'])
         ->and($exception->diagnostic()->reason)->toContain('stdClass')
         ->and($exception->diagnostic()->fix)->toContain('allowClasses');
 });
@@ -40,7 +49,9 @@ it('names the class and offset when rejecting an object', function () {
 it('names the limit, the configured value and the actual value', function () {
     $exception = LimitExceededException::depth('a:0:{}', 65, 64);
 
-    expect($exception->diagnostic()->reason)->toContain('65')
+    expect($exception->diagnostic()->code)->toBe(DiagnosticCode::MaxDepthExceeded)
+        ->and($exception->diagnostic()->context)->toBe(['actualDepth' => 65, 'configuredLimit' => 64])
+        ->and($exception->diagnostic()->reason)->toContain('65')
         ->and($exception->diagnostic()->reason)->toContain('64')
         ->and($exception->diagnostic()->fix)->toContain('withMaxDepth');
 });
@@ -70,6 +81,7 @@ it('exposes a diagnostic on every exception that has a payload offset', function
     $diagnostic = UnrepresentableValueException::nonUtf8String("s:1:\"\xff\";", 6)->diagnostic();
 
     expect($diagnostic)->toBeInstanceOf(Diagnostic::class)
+        ->and($diagnostic->code)->toBe(DiagnosticCode::NonUtf8String)
         ->and($diagnostic->offset)->toBe(6)
         ->and($diagnostic->fix)->toContain('Base64');
 });

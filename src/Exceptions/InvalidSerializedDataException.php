@@ -6,6 +6,7 @@ namespace Serialized\Exceptions;
 
 use InvalidArgumentException;
 use Serialized\Diagnostics\Diagnostic;
+use Serialized\Diagnostics\DiagnosticCode;
 use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\TokenType;
 
@@ -19,10 +20,9 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function emptyPayload(): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::EmptyPayload,
             payload: '',
             offset: 0,
-            reason: 'The payload is empty, so there is nothing to convert.',
-            fix: 'Pass a serialized string, for example i:42; or a:0:{}.',
         ));
     }
 
@@ -31,13 +31,11 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
      */
     public static function unknownTypePrefix(string $payload, int $offset): self
     {
-        $prefix = $payload[$offset];
-
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::UnknownTypePrefix,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('Unknown type prefix "%s" at offset %d.', $prefix, $offset),
-            fix: 'Expected one of: N, b, i, d, s, a, O, C, R, r, E.',
+            context: ['prefix' => $payload[$offset]],
         ));
     }
 
@@ -46,13 +44,11 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
      */
     public static function truncatedPayload(string $payload, string $expected): self
     {
-        $offset = strlen($payload);
-
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::TruncatedPayload,
             payload: $payload,
-            offset: $offset,
-            reason: sprintf('Payload ends at offset %d while expecting "%s".', $offset, $expected),
-            fix: sprintf('Append the missing "%s", or check whether the payload was cut short in storage.', $expected),
+            offset: strlen($payload),
+            context: ['expected' => $expected],
         ));
     }
 
@@ -62,15 +58,13 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function unexpectedByte(string $payload, int $offset, string $expected): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::UnexpectedByte,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'Expected "%s" at offset %d, found "%s".',
-                $expected,
-                $offset,
-                $payload[$offset],
-            ),
-            fix: sprintf('Replace the byte at offset %d with "%s".', $offset, $expected),
+            context: [
+                'expected' => $expected,
+                'found' => $payload[$offset],
+            ],
         ));
     }
 
@@ -80,15 +74,13 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function malformedValue(string $payload, int $offset, TokenType $type, string $literal): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MalformedValue,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'Malformed %s literal "%s" at offset %d.',
-                $type->label(),
-                $literal,
-                $offset,
-            ),
-            fix: sprintf('Write a valid %s value, or correct the type prefix.', $type->label()),
+            context: [
+                'typeLabel' => $type->label(),
+                'literal' => $literal,
+            ],
         ));
     }
 
@@ -98,10 +90,10 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function malformedLength(string $payload, int $offset, string $literal): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MalformedLength,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('String length "%s" at offset %d is not a non-negative integer.', $literal, $offset),
-            fix: 'Write the value\'s length in bytes, for example s:6:"Chrome";.',
+            context: ['literal' => $literal],
         ));
     }
 
@@ -110,41 +102,17 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
      */
     public static function elementCountMismatch(string $payload, Token $header, int $actualCount): self
     {
-        $declaredCount = $header->declaredCount ?? 0;
-        $label = $header->type->label();
-
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::ElementCountMismatch,
             payload: $payload,
             offset: $header->offset,
-            reason: sprintf(
-                'The %s at offset %d declares %d element(s) but holds %d.',
-                $label,
-                $header->offset,
-                $declaredCount,
-                $actualCount,
-            ),
-            fix: sprintf(
-                'Change %s to %s, or correct the %s contents.',
-                self::headerFor($header, $declaredCount),
-                self::headerFor($header, $actualCount),
-                $label,
-            ),
+            context: [
+                'structureLabel' => $header->type->label(),
+                'className' => $header->className,
+                'declaredCount' => $header->declaredCount ?? 0,
+                'actualCount' => $actualCount,
+            ],
         ));
-    }
-
-    /**
-     * Spells the header a structure would need to declare a given number of pairs.
-     *
-     * A structure header carries a class name when it opens an object and none when it
-     * opens an array, which is the whole difference between the two spellings.
-     */
-    private static function headerFor(Token $header, int $count): string
-    {
-        $className = $header->className;
-
-        return $className === null
-            ? sprintf('a:%d', $count)
-            : sprintf('O:%d:"%s":%d', strlen($className), $className, $count);
     }
 
     /**
@@ -153,10 +121,9 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function unbalancedClose(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::UnbalancedClose,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('The closing brace at offset %d closes an array that was never opened.', $offset),
-            fix: 'Remove the brace, or add the array header it was meant to close.',
         ));
     }
 
@@ -166,14 +133,10 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function unclosedStructure(string $payload, Token $header): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::UnclosedStructure,
             payload: $payload,
             offset: $header->offset,
-            reason: sprintf(
-                'The %s opened at offset %d is never closed.',
-                $header->type->label(),
-                $header->offset,
-            ),
-            fix: 'Append the missing closing brace, or check whether the payload was cut short in storage.',
+            context: ['structureLabel' => $header->type->label()],
         ));
     }
 
@@ -182,17 +145,14 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
      */
     public static function nonScalarKey(string $payload, Token $key, Token $header): self
     {
-        $slot = self::keySlotOf($header);
-
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::NonScalarKey,
             payload: $payload,
             offset: $key->offset,
-            reason: sprintf('A %s is used as %s at offset %d.', $key->type->label(), $slot, $key->offset),
-            fix: sprintf(
-                'Only an integer or a string can be %s; replace the value at offset %d with one of those.',
-                $slot,
-                $key->offset,
-            ),
+            context: [
+                'keyTypeLabel' => $key->type->label(),
+                'keySlot' => self::keySlotOf($header),
+            ],
         ));
     }
 
@@ -212,10 +172,10 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
     public static function malformedElementCount(string $payload, int $offset, string $literal): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::MalformedElementCount,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('Array element count "%s" at offset %d is not a non-negative integer.', $literal, $offset),
-            fix: 'Write the number of key/value pairs, for example a:2:{...}.',
+            context: ['literal' => $literal],
         ));
     }
 
@@ -231,22 +191,13 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
         $offset = min((int) ($matches[1] ?? 0), strlen($payload));
 
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::RejectedByPhp,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('PHP could not unserialize this payload at offset %d: %s', $offset, $phpMessage),
-            fix: 'Check the payload against the byte shown; it may have been altered in storage or transit.',
+            context: ['phpMessage' => $phpMessage],
         ));
     }
 
-    /**
-     * The payload holds more bytes after its first complete value.
-     */
-    /**
-     * A value reached past the end of the byte range its container declared.
-     *
-     * Only a nested body can hit this: it is how a payload would otherwise smuggle a
-     * value past the length that decides how much of it unserialize() ever reads.
-     */
     /**
      * A structure declared more pairs than the bytes left in the payload could hold.
      *
@@ -261,35 +212,40 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
         int $remainingBytes,
     ): self {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::ImpossibleElementCount,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'A structure at offset %d declares %s pairs, which %d remaining bytes cannot hold.',
-                $offset,
-                $declaredCount,
-                $remainingBytes,
-            ),
-            fix: 'Correct the declared count to the number of pairs the structure actually holds.',
+            context: [
+                'declaredCount' => $declaredCount,
+                'remainingByteCount' => $remainingBytes,
+            ],
         ));
     }
 
+    /**
+     * A value reached past the end of the byte range its container declared.
+     *
+     * Only a nested body can hit this: it is how a payload would otherwise smuggle a
+     * value past the length that decides how much of it unserialize() ever reads.
+     */
     public static function valueOverrunsDeclaredLength(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::ValueOverrunsDeclaredLength,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('A value runs past the declared end of its body at offset %d.', $offset),
-            fix: 'Correct the declared length of the custom-serialized object so it covers its whole body.',
         ));
     }
 
+    /**
+     * The payload holds more bytes after its first complete value.
+     */
     public static function trailingBytes(string $payload, int $offset): self
     {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::TrailingBytes,
             payload: $payload,
             offset: $offset,
-            reason: sprintf('The value ends before offset %d, but the payload continues.', $offset),
-            fix: 'Remove the trailing bytes, or wrap the values in an array so the payload holds one value.',
         ));
     }
 
@@ -306,26 +262,14 @@ final class InvalidSerializedDataException extends InvalidArgumentException impl
         ?string $prefix = 's',
     ): self {
         return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::LengthMismatch,
             payload: $payload,
             offset: $offset,
-            reason: sprintf(
-                'String length mismatch at offset %d: declared %d bytes, found %d.',
-                $offset,
-                $declaredLength,
-                $actualLength,
-            ),
-            fix: $prefix === null
-                ? sprintf(
-                    'Change the declared length from %d to %d, or restore the missing bytes.',
-                    $declaredLength,
-                    $actualLength,
-                )
-                : sprintf(
-                    'Change %1$s:%2$d to %1$s:%3$d, or restore the missing bytes in the value.',
-                    $prefix,
-                    $declaredLength,
-                    $actualLength,
-                ),
+            context: [
+                'declaredByteLength' => $declaredLength,
+                'foundByteLength' => $actualLength,
+                'prefix' => $prefix,
+            ],
         ));
     }
 }

@@ -5,8 +5,20 @@ All notable changes to this project are documented here. This project follows
 
 ## Unreleased
 
+### Added
+
+- `Diagnostic` carries a `DiagnosticCode` and a `context` map, so a consumer can tell which
+  failure it caught without matching on English and can word its own message from the facts
+  behind ours — `declaredByteLength`, `foundByteLength`, `className`, `configuredLimit` and the
+  rest. `reason` and `fix` are unchanged, and the codes double as i18n keys and telemetry labels.
+
 ### Changed
 
+- The default `reason` and `fix` wording now lives on `DiagnosticCode` rather than inside each
+  exception's named constructor, and a `Diagnostic` derives both from its code, so the two can
+  never describe different failures. The named constructors keep their signatures; `Diagnostic`'s
+  own constructor now takes `code`, `payload`, `offset` and `context` instead of `reason` and
+  `fix`.
 - `Token` keeps offsets into the payload rather than copies of its bytes; `raw` and `literal` are
   now methods deriving their substring on demand, and the redundant `declaredLength` is gone.
   Peak memory falls by about 20% on a string-heavy payload and 11% on one of minimal tokens.
