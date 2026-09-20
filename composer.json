@@ -41,8 +41,7 @@
             "@pint --test",
             "@stan",
             "@test"
-        ],
-        "coverage": "php -d zend_extension=/Applications/Herd.app/Contents/Resources/xdebug/xdebug-84-arm64.so -d xdebug.mode=coverage ./vendor/bin/pest --coverage --min=100"
+        ]
     },
     "config": {
         "allow-plugins": {
