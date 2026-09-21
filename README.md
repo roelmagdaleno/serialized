@@ -60,8 +60,8 @@ $json = $converter->toJson($payload);
 
 ## Errors you can act on
 
-`unserialize()` tells you only `Error at offset 24`. This package tells you what is wrong, where,
-and how to fix it:
+When a payload is broken, `unserialize()` says `Error at offset 24` and leaves you there. This
+package tells you what broke, where, and how to fix it:
 
 ```php
 Serialized::toJson('a:1:{s:4:"name";s:6:"Chrom";}');
@@ -76,8 +76,8 @@ a:1:{s:4:"name";s:6:"Chrom";}
 Fix: Change s:6 to s:5, or restore the missing bytes in the value.
 ```
 
-Every exception carries a `Diagnostic` you can read programmatically, so a UI can highlight the
-exact byte:
+The same information is available in code. Every exception carries a `Diagnostic`, so your app can
+point at the exact byte too:
 
 ```php
 try {
@@ -95,9 +95,9 @@ try {
 
 ### Write your own messages
 
-The `reason` and `fix` above are a default, not a ceiling. `code` is a stable enum case — an
-i18n key, a telemetry label, something to `match` on — and `context` carries the facts the
-sentence was built from, so you can word the failure however your product needs to:
+`reason` and `fix` are defaults, not a ceiling. `code` is a stable enum case — use it as a
+translation key, a log label, or something to `match` on — and `context` holds the raw facts the
+sentence was built from, so you can word the failure however your product needs:
 
 ```php
 use Serialized\Diagnostics\DiagnosticCode;
@@ -113,11 +113,11 @@ $message = match ($diagnostic->code) {
 };
 ```
 
-The byte `offset` is never repeated inside `context` — the diagnostic already owns it. To
-re-render the package's own message, caret snippet included, call
+Two small things: the byte `offset` never appears inside `context`, because the diagnostic already
+owns it. And to print the package's own message again, caret snippet included, call
 `DiagnosticMessage::render($diagnostic)`.
 
-Every code and the context it carries:
+Here is every code and the context it carries:
 
 | `DiagnosticCode` | `context` |
 |---|---|
@@ -149,24 +149,25 @@ Every code and the context it carries:
 | `MaxDepthExceeded` | `actualDepth`, `configuredLimit` |
 | `MaxElementsExceeded` | `configuredLimit` |
 
-`JsonEncodingException` is the one exception with no `Diagnostic`, and so no code: `json_encode`
-failing after validation cannot be traced to a byte.
+### The five exceptions
 
 | Exception | Thrown when |
 |---|---|
-| `InvalidSerializedDataException` | Malformed payload: truncated token, length mismatch, unbalanced braces, wrong element count, trailing bytes |
+| `InvalidSerializedDataException` | The payload is malformed: truncated, wrong length, unbalanced braces, wrong element count, trailing bytes |
 | `UnsafeSerializedDataException` | An object of a class you have not allowed, a class PHP cannot load or restore, or a reference (`R:`/`r:`) |
 | `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case |
-| `LimitExceededException` | `maxBytes`, `maxDepth` or `maxElements` exceeded |
+| `LimitExceededException` | `maxBytes`, `maxDepth` or `maxElements` was exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation |
 
 All five implement `Serialized\Exceptions\SerializedException`, so one `catch` covers them all.
-Catch a specific one and `diagnostic()` is guaranteed non-null.
+Catch a specific one and `diagnostic()` is guaranteed non-null — except for
+`JsonEncodingException`, the only one without a diagnostic: once the payload is validated, a
+`json_encode` failure cannot be traced back to a byte.
 
 ## Objects are rejected by default
 
-Unserializing an object can run its `__wakeup()` and `__destruct()` on data the payload controls —
-the starting point of most PHP deserialization attacks. So objects are refused unless you name the
+Unserializing an object can run its `__wakeup()` and `__destruct()` on data the payload controls.
+That is where most PHP deserialization attacks begin, so objects are refused unless you name the
 class yourself:
 
 ```php
@@ -177,21 +178,12 @@ Serialized::make()->allowClasses([stdClass::class])->toJson('O:8:"stdClass":0:{}
 // {}
 ```
 
-Allowing a class is a statement of trust about the payload, not just about the class. If an
-attacker controls the payload and the class has a `__wakeup()` or `__destruct()` that touches the
-filesystem, a database, or `unlink()`, allowing it hands them that method. Allow classes only for
-payloads from a source you control.
+The full model is in [SECURITY.md](SECURITY.md).
 
-The rejection happens *before* `unserialize()` is called, so a disallowed class is never
-instantiated, and a `__PHP_Incomplete_Class` never reaches your code. Allowing a class PHP cannot
-actually rebuild — a name that is not autoloadable here, an abstract class, an interface — is
-refused for the same reason: you would get an incomplete class or a raw `Error` instead of the
-class you allowed. See [SECURITY.md](SECURITY.md) for the full model.
+### Private and protected properties survive
 
-### Every property is converted, not just the public ones
-
-`json_encode()` reads an object's public properties and drops the rest. This package converts the
-object first, so private and protected properties survive:
+`json_encode()` only sees an object's public properties and drops the rest. This package converts
+the object first, so nothing is lost:
 
 ```php
 final class Money
@@ -206,11 +198,11 @@ Serialized::make()->allowClasses([Money::class])->compact()->toJson(serialize(ne
 // {"amount":5,"currency":"USD"}
 ```
 
-Property names are written as you declared them. The exception is a name declared twice in one
+Names come out as you declared them. The one exception is a name declared twice in the same
 hierarchy — a class redeclaring a parent's private property — where both are kept and qualified as
 `Parent::balance` and `Child::balance`, so neither value is lost.
 
-`toArray()` is untouched by this: it returns the real object, not a converted one.
+None of this affects `toArray()`: it returns the real object, not a converted one.
 
 ## Contributing
 
