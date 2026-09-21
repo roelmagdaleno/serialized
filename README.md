@@ -164,35 +164,6 @@ Catch a specific one and `diagnostic()` is guaranteed non-null — except for
 `JsonEncodingException`, the only one without a diagnostic: once the payload is validated, a
 `json_encode` failure cannot be traced back to a byte.
 
-## References are resolved, loops are not
-
-`serialize()` writes `R:` or `r:` whenever the value it is handed holds a PHP reference,
-so back-references turn up in ordinary payloads. `unserialize()` resolves them before this
-package sees a value, and JSON simply carries the result — the same value written out
-wherever it appears:
-
-```php
-$shared = ['a' => 1];
-
-Serialized::make()->compact()->toJson(serialize(['first' => &$shared, 'second' => &$shared]));
-// {"first":{"a":1},"second":{"a":1}}
-```
-
-What JSON has no answer for is a value that contains *itself*. That payload describes a
-structure with no end, so it is refused:
-
-```php
-$loop = [];
-$loop['self'] = &$loop;
-
-Serialized::toJson(serialize($loop));
-// UnrepresentableValueException: The reference at offset 6 points back into a value
-// that contains it, so the structure never ends.
-```
-
-The loop is found while the value is being walked, so you get a diagnostic pointing at a
-byte rather than `json_encode()` reporting a recursion it cannot place.
-
 ## Objects are rejected by default
 
 Unserializing an object can run its `__wakeup()` and `__destruct()` on data the payload controls.
