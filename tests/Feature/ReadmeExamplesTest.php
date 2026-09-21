@@ -79,3 +79,10 @@ it('documents the defaults the README lists', function () {
 it('converts the README escaped-string example', function () {
     expect(Serialized::toJson('S:5:"\\68ello";'))->toBe('"hello"');
 });
+
+it('converts the README shared-reference example', function () {
+    $shared = ['a' => 1];
+
+    expect(Serialized::make()->compact()->toJson(serialize(['first' => &$shared, 'second' => &$shared])))
+        ->toBe('{"first":{"a":1},"second":{"a":1}}');
+});

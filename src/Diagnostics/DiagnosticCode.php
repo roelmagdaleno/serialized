@@ -151,7 +151,7 @@ enum DiagnosticCode: string
                 $offset,
             ),
             self::ContainsReference => sprintf(
-                'The payload contains a reference (R: or r:) at offset %d, which JSON cannot represent.',
+                'The reference at offset %d points back into a value that contains it, so the structure never ends.',
                 $offset,
             ),
             self::NonUtf8String => sprintf(
@@ -247,7 +247,7 @@ enum DiagnosticCode: string
                 .'plain object, none of which can be restored.',
                 $this->stringFrom($context, 'className'),
             ),
-            self::ContainsReference => 'Serialize a copy of the referenced value instead of a reference to it.',
+            self::ContainsReference => 'Break the loop before serializing: a structure that contains itself has no JSON form.',
             self::NonUtf8String => 'Base64-encode this value before serializing it, or repair its encoding.',
             self::NonBackedEnum => 'Give the enum a backing type, or replace the case with a string before serializing.',
             self::UnusablePropertyName => 'Remove the NUL byte from the property name, or drop the property before serializing.',

@@ -64,4 +64,21 @@ final class UnrepresentableValueException extends RuntimeException implements Se
             context: ['literal' => $literal],
         ));
     }
+
+    /**
+     * The value contains itself, by way of a reference that points at an ancestor.
+     *
+     * An ordinary back-reference resolves to the value it names and is written out again
+     * wherever it appears. One that closes a loop describes a structure with no end, so
+     * there is no JSON document to write. The offset names the payload's first reference,
+     * which is the byte a reader has to start from to find the loop.
+     */
+    public static function circularReference(string $payload, int $offset): self
+    {
+        return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::ContainsReference,
+            payload: $payload,
+            offset: $offset,
+        ));
+    }
 }

@@ -44,7 +44,12 @@ final readonly class SerializedConverter
      */
     public function toJson(string $payload): string
     {
-        $value = $this->normalizer->normalize($this->toArray($payload));
+        $parsed = $this->validate($payload);
+        $value = $this->normalizer->normalize(
+            $this->unserialize($payload),
+            $payload,
+            $parsed->referenceOffset,
+        );
 
         return $this->encoder->encode($value, $this->options);
     }
@@ -73,6 +78,14 @@ final readonly class SerializedConverter
     {
         $this->validate($payload);
 
+        return $this->unserialize($payload);
+    }
+
+    /**
+     * Hands the validated payload to PHP under the configured allow-list.
+     */
+    private function unserialize(string $payload): mixed
+    {
         return $this->unserializer->unserialize(
             $payload,
             new ClassAllowList($this->options->allowedClasses)->normalizedClassNames(),

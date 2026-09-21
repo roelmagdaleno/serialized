@@ -53,19 +53,4 @@ final class UnsafeSerializedDataException extends RuntimeException implements Se
             context: ['className' => $className],
         ));
     }
-
-    /**
-     * The payload uses a back-reference, which JSON has no way to express.
-     *
-     * Resolving one by value would silently duplicate data, and a circular reference
-     * cannot be resolved at all, so the payload is refused instead.
-     */
-    public static function references(string $payload, int $offset): self
-    {
-        return self::fromDiagnostic(new Diagnostic(
-            code: DiagnosticCode::ContainsReference,
-            payload: $payload,
-            offset: $offset,
-        ));
-    }
 }

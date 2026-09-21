@@ -154,8 +154,8 @@ Here is every code and the context it carries:
 | Exception | Thrown when |
 |---|---|
 | `InvalidSerializedDataException` | The payload is malformed: truncated, wrong length, unbalanced braces, wrong element count, trailing bytes |
-| `UnsafeSerializedDataException` | An object of a class you have not allowed, a class PHP cannot load or restore, or a reference (`R:`/`r:`) |
-| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case |
+| `UnsafeSerializedDataException` | An object of a class you have not allowed, or a class PHP cannot load or restore |
+| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case, or a value that contains itself |
 | `LimitExceededException` | `maxBytes`, `maxDepth` or `maxElements` was exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation |
 
@@ -163,6 +163,35 @@ All five implement `Serialized\Exceptions\SerializedException`, so one `catch` c
 Catch a specific one and `diagnostic()` is guaranteed non-null — except for
 `JsonEncodingException`, the only one without a diagnostic: once the payload is validated, a
 `json_encode` failure cannot be traced back to a byte.
+
+## References are resolved, loops are not
+
+`serialize()` writes `R:` or `r:` whenever the value it is handed holds a PHP reference,
+so back-references turn up in ordinary payloads. `unserialize()` resolves them before this
+package sees a value, and JSON simply carries the result — the same value written out
+wherever it appears:
+
+```php
+$shared = ['a' => 1];
+
+Serialized::make()->compact()->toJson(serialize(['first' => &$shared, 'second' => &$shared]));
+// {"first":{"a":1},"second":{"a":1}}
+```
+
+What JSON has no answer for is a value that contains *itself*. That payload describes a
+structure with no end, so it is refused:
+
+```php
+$loop = [];
+$loop['self'] = &$loop;
+
+Serialized::toJson(serialize($loop));
+// UnrepresentableValueException: The reference at offset 6 points back into a value
+// that contains it, so the structure never ends.
+```
+
+The loop is found while the value is being walked, so you get a diagnostic pointing at a
+byte rather than `json_encode()` reporting a recursion it cannot place.
 
 ## Objects are rejected by default
 
