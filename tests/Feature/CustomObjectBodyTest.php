@@ -29,18 +29,28 @@ it('converts a well-formed custom-serialized body', function () {
     expect(convertCustomObject(customObject('a:1:{s:1:"a";i:1;}')))->toBe('{"contents":{"a":1}}');
 });
 
-it('rejects a reference hidden in a custom-serialized body', function () {
-    $payload = customObject('a:2:{i:0;a:0:{}i:1;R:2;}');
+/**
+ * Inside a custom body, PHP's value numbering already counts the object the body
+ * belongs to, so `R:2` here names the contents array rather than the empty array
+ * inside it. The body describes a value that contains itself, and `var_dump()` of
+ * the result agrees: it prints `*RECURSION*`.
+ */
+it('refuses a body whose reference makes the object contain itself', function () {
+    expect(fn () => convertCustomObject(customObject('a:2:{i:0;a:0:{}i:1;R:2;}')))
+        ->toThrow(UnrepresentableValueException::class);
+});
 
-    expect(fn () => convertCustomObject($payload))->toThrow(UnsafeSerializedDataException::class);
+it('resolves a body reference that names a value beside it', function () {
+    expect(convertCustomObject(customObject('a:3:{i:0;s:1:"a";i:1;R:3;i:2;i:7;}')))
+        ->toBe('{"contents":["a","a",7]}');
 });
 
 it('points a body diagnostic at a byte of the whole payload', function () {
-    $payload = customObject('a:2:{i:0;a:0:{}i:1;R:2;}');
+    $payload = customObject('s:1:"'."\xff".'";');
     $diagnostic = diagnosticFor(fn () => convertCustomObject($payload));
 
     expect($diagnostic->payload)->toBe($payload)
-        ->and($diagnostic->offset)->toBe(strpos($payload, 'R:2;'));
+        ->and($diagnostic->offset)->toBe(strpos($payload, "\xff"));
 });
 
 it('rejects a class named inside a custom-serialized body but not allowed', function () {

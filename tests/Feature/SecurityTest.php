@@ -63,15 +63,24 @@ it('rejects an enum by default', function () {
         ->toThrow(UnsafeSerializedDataException::class);
 });
 
-it('rejects both reference forms', function (string $payload) {
-    $diagnostic = diagnosticFor(fn () => Serialized::toJson($payload));
+/**
+ * A reference names a value the same payload already carries, so resolving one can
+ * only ever duplicate data the caller already has. It builds nothing and runs
+ * nothing, which is why it is not refused the way a class is.
+ */
+it('resolves a back reference without instantiating anything', function () {
+    expect(Serialized::make()->compact()->toJson('a:2:{i:0;N;i:1;R:2;}'))->toBe('[null,null]');
+});
 
-    expect($diagnostic->reason)->toContain('reference')
+it('refuses a reference that makes the value contain itself', function () {
+    $loop = [];
+    $loop['self'] = &$loop;
+
+    $diagnostic = diagnosticFor(fn () => Serialized::toJson(serialize($loop)));
+
+    expect($diagnostic->reason)->toContain('never ends')
         ->and($diagnostic->fix)->not->toBeEmpty();
-})->with([
-    'back reference' => ['a:2:{i:0;N;i:1;R:2;}'],
-    'value reference' => ['a:2:{i:0;s:1:"a";i:1;r:1;}'],
-]);
+});
 
 it('never produces an incomplete class for any input', function (string $payload) {
     $value = Serialized::tryToJson($payload);

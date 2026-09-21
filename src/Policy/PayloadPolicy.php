@@ -89,10 +89,6 @@ final readonly class PayloadPolicy
             }
         }
 
-        if ($parsed->referenceOffset !== null) {
-            throw UnsafeSerializedDataException::references($payload, $parsed->referenceOffset);
-        }
-
         $this->representability->enforcePropertyNames($payload, $parsed->propertyNames);
         $this->representability->enforce($payload, $tokens);
     }
