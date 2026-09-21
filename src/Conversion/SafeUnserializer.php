@@ -25,6 +25,15 @@ final class SafeUnserializer
     private const array FAILURE_LEVELS = [E_WARNING, E_USER_WARNING];
 
     /**
+     * Warnings PHP raises while still returning the value it read.
+     *
+     * An integer too large for the platform saturates to PHP_INT_MAX and is reported at
+     * warning level, but unserialize() has not failed -- it hands back a usable value, and
+     * refusing it here would reject a payload PHP just decoded.
+     */
+    private const array BENIGN_WARNINGS = ['Numerical result out of range'];
+
+    /**
      * Unserializes a payload the tokenizer, parser and policy have already accepted.
      *
      * @param  list<string>  $allowedClasses  normalized by ClassAllowList, never the caller's raw spelling
@@ -39,6 +48,12 @@ final class SafeUnserializer
             if (! in_array($level, self::FAILURE_LEVELS, strict: true)) {
                 // Handing it back to PHP keeps the remark visible without it becoming ours.
                 return false;
+            }
+
+            foreach (self::BENIGN_WARNINGS as $benign) {
+                if (str_contains($message, $benign)) {
+                    return true;
+                }
             }
 
             $failure = $message;

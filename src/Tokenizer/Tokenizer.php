@@ -77,6 +77,7 @@ final class Tokenizer
             'i' => $this->readScalar($payload, $offset, TokenType::Integer, $this->isValidInteger(...)),
             'd' => $this->readScalar($payload, $offset, TokenType::Float, $this->isValidFloat(...)),
             's' => $this->readString($payload, $offset),
+            'S' => $this->readEscapedString($payload, $offset),
             'a' => $this->readArrayHeader($payload, $offset),
             'O' => $this->readObjectHeader($payload, $offset),
             'C' => $this->readCustomObject($payload, $offset),
@@ -173,6 +174,120 @@ final class Tokenizer
             length: $closingQuote + 2 - $offset,
             literalOffset: $valueStart,
             literalLength: $declaredLength,
+        );
+    }
+
+    /**
+     * Reads `S:LENGTH:"VALUE";`, whose value spells its bytes as `\XX` escapes.
+     *
+     * PHP writes this form when a string holds bytes it would rather not print, and reads
+     * it back as an ordinary string. The declared length counts the bytes it spells, not
+     * the bytes on the page, so the value's raw span is found by decoding rather than by
+     * arithmetic -- and the token carries what the escapes spell, because that is the
+     * value every later stage has to judge.
+     */
+    private function readEscapedString(string $payload, int $offset): Token
+    {
+        $this->expectByte($payload, $offset + 1, ':');
+
+        $lengthStart = $offset + 2;
+        $lengthEnd = $this->findSequence($payload, ':', $lengthStart)
+            ?? throw InvalidSerializedDataException::truncatedPayload($payload, ':');
+
+        $declaredLength = $this->readDeclaredLength($payload, $lengthStart, $lengthEnd);
+
+        $this->expectByte($payload, $lengthEnd + 1, '"');
+
+        $valueStart = $lengthEnd + 2;
+        $decoded = '';
+        $cursor = $valueStart;
+
+        while (strlen($decoded) < $declaredLength) {
+            if ($cursor >= strlen($payload)) {
+                throw InvalidSerializedDataException::lengthMismatch(
+                    $payload,
+                    $lengthStart,
+                    $declaredLength,
+                    strlen($decoded),
+                    prefix: 'S',
+                );
+            }
+
+            $decoded .= $this->readEscapedByte($payload, $cursor);
+            $cursor += $payload[$cursor] === '\\' ? 3 : 1;
+        }
+
+        if (($payload[$cursor] ?? null) !== '"') {
+            $this->rejectEscapedLengthOrQuote($payload, $lengthStart, $valueStart, $declaredLength, $cursor);
+        }
+
+        $this->expectByte($payload, $cursor + 1, ';');
+
+        return new Token(
+            TokenType::String,
+            $payload,
+            $offset,
+            length: $cursor + 2 - $offset,
+            literalOffset: $valueStart,
+            literalLength: $cursor - $valueStart,
+            decodedLiteral: $decoded,
+        );
+    }
+
+    /**
+     * Reads the one byte written at the cursor, resolving a `\XX` escape when it finds one.
+     */
+    private function readEscapedByte(string $payload, int $cursor): string
+    {
+        if ($payload[$cursor] !== '\\') {
+            return $payload[$cursor];
+        }
+
+        $escape = substr($payload, $cursor + 1, 2);
+
+        if (preg_match('/^[0-9A-Fa-f]{2}$/', $escape) !== 1) {
+            throw InvalidSerializedDataException::malformedValue(
+                $payload,
+                $cursor,
+                TokenType::String,
+                substr($payload, $cursor, 3),
+            );
+        }
+
+        return chr((int) hexdec($escape));
+    }
+
+    /**
+     * Blames the declared length when the real terminator can be found, the missing quote
+     * otherwise, counting what the escapes between here and there actually spell.
+     */
+    private function rejectEscapedLengthOrQuote(
+        string $payload,
+        int $lengthStart,
+        int $valueStart,
+        int $declaredLength,
+        int $closingQuote,
+    ): never {
+        $terminator = $this->findSequence($payload, '";', $valueStart);
+
+        if ($terminator === null) {
+            $this->expectByte($payload, $closingQuote, '"');
+        }
+
+        $decoded = '';
+        $cursor = $valueStart;
+
+        while ($cursor < $terminator) {
+            $decoded .= $this->readEscapedByte($payload, $cursor);
+            $cursor += $payload[$cursor] === '\\' ? 3 : 1;
+        }
+
+        throw InvalidSerializedDataException::lengthMismatch(
+            $payload,
+            $lengthStart,
+            $declaredLength,
+            strlen($decoded),
+            prefix: 'S',
         );
     }
 

@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Serialized\Exceptions\InvalidSerializedDataException;
 use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\Tokenizer;
 use Serialized\Tokenizer\TokenType;
@@ -123,6 +122,10 @@ it('counts the bytes actually present when a string runs past the payload', func
     'no terminator at all' => ['s:6:"Chr', 3],
 ]);
 
-it('rejects the S: escaped-string form deliberately, though PHP accepts it', function () {
-    expect(fn () => tokenize('S:1:"a";'))->toThrow(InvalidSerializedDataException::class);
+it('reads the S: escaped-string form as an ordinary string token', function () {
+    $tokens = tokenize('S:2:"\\68i";');
+
+    expect($tokens)->toHaveCount(1)
+        ->and($tokens[0]->type)->toBe(TokenType::String)
+        ->and($tokens[0]->literal())->toBe('hi');
 });

@@ -75,3 +75,7 @@ it('documents the defaults the README lists', function () {
         ->and($options->maxElements)->toBe(1_000_000)
         ->and($options->allowedClasses)->toBe([]);
 });
+
+it('converts the README escaped-string example', function () {
+    expect(Serialized::toJson('S:5:"\\68ello";'))->toBe('"hello"');
+});
