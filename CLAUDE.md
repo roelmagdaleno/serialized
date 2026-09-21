@@ -1,12 +1,23 @@
 # CLAUDE.md
 
 `roelmagdaleno/serialized` — a PHP 8.4 package that converts PHP serialized data into
-pretty-printed JSON, safely. Published on Packagist, consumed by https://unserialize.dev
-and other PHP developers.
+pretty-printed JSON, safely.
 
-**`SPEC.md` is the source of truth** for the architecture, the pipeline, the public API, the
-security model, and the success criteria. Read it before changing anything in `src/`. If a
-decision changes, update `SPEC.md` first, then the code.
+## Where things are written down
+
+Read the relevant one before you work; do not restate it here.
+
+| Doc | Holds |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | The pipeline, the stage boundaries, where each guarantee is enforced, the project layout. **Read before changing anything in `src/`.** |
+| [`docs/adr/`](docs/adr/README.md) | Why a decision was made, and what was rejected. Immutable. |
+| [`docs/testing.md`](docs/testing.md) | Test layout, the coverage gate, the cases that must stay covered. |
+| [`README.md`](README.md) | The public API: four verbs, the builder, every `DiagnosticCode` and its `context`. |
+| [`SECURITY.md`](SECURITY.md) | The safety promise made to callers. |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed and why it mattered. |
+
+When a decision changes, update the doc that owns it **before** the code, and add an ADR if
+something was rejected along the way.
 
 ## Commands
 
@@ -58,15 +69,10 @@ the suite. Do not work around either one.
 
 ## Testing
 
-Pest 5. `tests/Unit` mirrors `src/` one file per class; `tests/Feature` covers the public API
-end to end; `tests/Fixtures` holds real payloads. **100% line coverage of `src/`** — the package
-is small and pure, so a missing branch means an untested security boundary. Check it locally with
-`composer test -- --coverage --min=100`.
-
-Assert on the exception's `Diagnostic` (offset, reason, fix), not on the full message string.
-
-Every behaviour change is test-first: red, green, refactor. Never weaken, skip, or delete a test
-to reach green — fix the code or raise it with me.
+Test-first for every behaviour change: red, green, refactor. 100% line coverage of `src/`, never
+lowered. Assert on the `Diagnostic` (code, offset, context), not on the message string. Never
+weaken, skip or delete a test to reach green — fix the code or raise it with me.
+Full strategy and the required cases: [`docs/testing.md`](docs/testing.md).
 
 ## Boundaries
 

@@ -216,7 +216,7 @@ hierarchy — a class redeclaring a parent's private property — where both are
 
 ```bash
 composer check      # formatting, static analysis and tests
-composer coverage   # the suite with the 100% coverage gate
+composer test -- --coverage --min=100   # the suite with the 100% coverage gate
 ```
 
 ## License
