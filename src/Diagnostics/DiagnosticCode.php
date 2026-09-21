@@ -199,7 +199,7 @@ enum DiagnosticCode: string
     {
         return match ($this) {
             self::EmptyPayload => 'Pass a serialized string, for example i:42; or a:0:{}.',
-            self::UnknownTypePrefix => 'Expected one of: N, b, i, d, s, a, O, C, R, r, E.',
+            self::UnknownTypePrefix => 'Expected one of: N, b, i, d, s, S, a, O, C, R, r, E.',
             self::TruncatedPayload => sprintf(
                 'Append the missing "%s", or check whether the payload was cut short in storage.',
                 $this->stringFrom($context, 'expected'),

@@ -22,6 +22,7 @@ final readonly class Token
      * @param  int|null  $literalLength  how many bytes that value occupies
      * @param  int|null  $declaredCount  the number of key/value pairs an array token declares
      * @param  string|null  $className  the class an object token names
+     * @param  string|null  $decodedLiteral  the value once its escapes are resolved, for a token that spells its bytes
      */
     public function __construct(
         public TokenType $type,
@@ -32,6 +33,7 @@ final readonly class Token
         public ?int $literalLength = null,
         public ?int $declaredCount = null,
         public ?string $className = null,
+        public ?string $decodedLiteral = null,
     ) {}
 
     /**
@@ -51,10 +53,18 @@ final readonly class Token
     }
 
     /**
-     * Returns the token's value as written, empty for a token that has none.
+     * Returns the token's value, empty for a token that has none.
+     *
+     * A token whose bytes are spelled as escapes returns what they spell, because every
+     * stage that judges a value -- the UTF-8 check, the property-name rules -- has to see
+     * the bytes PHP will build, not the notation they were written in.
      */
     public function literal(): string
     {
+        if ($this->decodedLiteral !== null) {
+            return $this->decodedLiteral;
+        }
+
         if ($this->literalOffset === null || $this->literalLength === null) {
             return '';
         }

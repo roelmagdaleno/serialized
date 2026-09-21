@@ -204,6 +204,21 @@ hierarchy — a class redeclaring a parent's private property — where both are
 
 None of this affects `toArray()`: it returns the real object, not a converted one.
 
+## The `S` format is read too
+
+PHP writes `S:` instead of `s:` when a string holds bytes it would rather not print,
+spelling them as `\XX` escapes. It reads the form back as an ordinary string, and so does
+this package:
+
+```php
+Serialized::toJson('S:5:"\68ello";');
+// "hello"
+```
+
+The declared length counts the bytes the escapes spell, not the bytes on the page. What
+they spell is also what gets judged, so a payload escaping a byte that is not valid UTF-8
+is refused exactly as the unescaped spelling would be.
+
 ## Contributing
 
 ```bash
