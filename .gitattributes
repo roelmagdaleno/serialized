@@ -4,6 +4,7 @@
 /.gitattributes    export-ignore
 /.gitignore        export-ignore
 /.claude           export-ignore
+/.github           export-ignore
 /tasks             export-ignore
 /tests             export-ignore
 /phpunit.xml       export-ignore
