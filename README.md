@@ -180,30 +180,6 @@ Serialized::make()->allowClasses([stdClass::class])->toJson('O:8:"stdClass":0:{}
 
 The full model is in [SECURITY.md](SECURITY.md).
 
-### Private and protected properties survive
-
-`json_encode()` only sees an object's public properties and drops the rest. This package converts
-the object first, so nothing is lost:
-
-```php
-final class Money
-{
-    public function __construct(
-        private int $amount = 5,
-        protected string $currency = 'USD',
-    ) {}
-}
-
-Serialized::make()->allowClasses([Money::class])->compact()->toJson(serialize(new Money));
-// {"amount":5,"currency":"USD"}
-```
-
-Names come out as you declared them. The one exception is a name declared twice in the same
-hierarchy — a class redeclaring a parent's private property — where both are kept and qualified as
-`Parent::balance` and `Child::balance`, so neither value is lost.
-
-None of this affects `toArray()`: it returns the real object, not a converted one.
-
 ## Contributing
 
 ```bash
