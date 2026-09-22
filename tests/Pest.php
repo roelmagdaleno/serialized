@@ -74,3 +74,23 @@ function storedPayload(string $name): string
 {
     return (string) file_get_contents(__DIR__."/Fixtures/{$name}.txt");
 }
+
+/**
+ * Runs an action and returns the message of any PHP error that reached PHP's own handler.
+ *
+ * The package's handler around unserialize() replaces PHPUnit's rather than chaining to it,
+ * so a notice it hands back never reaches failOnDeprecation; error_get_last() still sees it.
+ */
+function errorLeakedBy(callable $action): ?string
+{
+    $previousLevel = error_reporting(E_ALL);
+    error_clear_last();
+
+    try {
+        $action();
+    } finally {
+        error_reporting($previousLevel);
+    }
+
+    return error_get_last()['message'] ?? null;
+}

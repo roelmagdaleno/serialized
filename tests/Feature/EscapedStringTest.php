@@ -22,6 +22,17 @@ it('converts a string whose bytes are written as escapes', function (string $pay
     'empty value' => ['S:0:"";', '""'],
 ]);
 
+/**
+ * PHP 8.4 deprecated reading the `S` format, so the payload PHP sees must spell it as `s`.
+ */
+it('raises no deprecation for an escaped string', function (string $payload) {
+    expect(errorLeakedBy(fn () => Serialized::toJson($payload)))->toBeNull()
+        ->and(errorLeakedBy(fn () => Serialized::toArray($payload)))->toBeNull();
+})->with([
+    'a value' => ['S:5:"\\68ello";'],
+    'an array key' => ['a:1:{S:3:"\\61bc";S:1:"x";}'],
+]);
+
 it('reads an escaped string as an array key and as a value', function () {
     expect(Serialized::make()->compact()->toJson('a:1:{S:3:"\\61bc";S:1:"x";}'))->toBe('{"abc":"x"}');
 });
@@ -61,6 +72,7 @@ it('names the S prefix when the declared length is wrong', function (string $pay
 })->with([
     'declares more than it spells' => ['S:5:"\\68el";', 5, 3],
     'declares fewer than it spells' => ['S:2:"\\68ello";', 2, 5],
+    'runs out before the declared length' => ['S:5:"hi', 5, 2],
 ]);
 
 it('reports an escaped string with a broken header', function (string $payload, DiagnosticCode $code) {

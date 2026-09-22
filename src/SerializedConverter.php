@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Serialized;
 
+use Serialized\Conversion\EscapedStringRewriter;
 use Serialized\Conversion\JsonEncoder;
 use Serialized\Conversion\SafeUnserializer;
 use Serialized\Conversion\ValueNormalizer;
@@ -32,6 +33,7 @@ final readonly class SerializedConverter
         private Tokenizer $tokenizer = new Tokenizer,
         private Parser $parser = new Parser,
         private PayloadPolicy $policy = new PayloadPolicy,
+        private EscapedStringRewriter $rewriter = new EscapedStringRewriter,
         private SafeUnserializer $unserializer = new SafeUnserializer,
         private ValueNormalizer $normalizer = new ValueNormalizer,
         private JsonEncoder $encoder = new JsonEncoder,
@@ -83,11 +85,13 @@ final readonly class SerializedConverter
 
     /**
      * Hands the validated payload to PHP under the configured allow-list.
+     *
+     * PHP reads it with its escaped strings rewritten, never in the deprecated `S` form.
      */
     private function unserialize(string $payload): mixed
     {
         return $this->unserializer->unserialize(
-            $payload,
+            $this->rewriter->rewrite($payload),
             new ClassAllowList($this->options->allowedClasses)->normalizedClassNames(),
         );
     }
@@ -258,6 +262,7 @@ final readonly class SerializedConverter
             $this->tokenizer,
             $this->parser,
             $this->policy,
+            $this->rewriter,
             $this->unserializer,
             $this->normalizer,
             $this->encoder,

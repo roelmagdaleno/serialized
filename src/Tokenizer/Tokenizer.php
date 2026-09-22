@@ -254,7 +254,7 @@ final class Tokenizer
             );
         }
 
-        return chr((int) hexdec($escape));
+        return pack('H2', $escape);
     }
 
     /**

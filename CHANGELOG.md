@@ -25,6 +25,11 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- A payload holding an `S:` escaped string no longer raises PHP 8.4's "Unserializing the 'S'
+  format is deprecated" notice. The tokenizer already read the form, but the original bytes were
+  handed to `unserialize()`, and the deprecation reached the caller's error handler. Each `S:`
+  string, `C:` bodies included, is now rewritten as the `s:` string it spells before PHP reads it,
+  so these payloads will keep converting once PHP removes the notation.
 - A serialized object carrying a property its class no longer declares now converts. PHP raises
   `E_DEPRECATED` ("Creation of dynamic property") for it on 8.2+, which the error handler around
   `unserialize()` read as failure — so `toJson()` called a payload PHP had just rebuilt malformed,
