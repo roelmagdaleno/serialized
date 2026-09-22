@@ -30,6 +30,19 @@ it('converts a well-formed custom-serialized body', function () {
 });
 
 /**
+ * The class's own unserialize() runs inside the package's call, so an `S` in its body would
+ * raise PHP 8.4's deprecation just as one outside it does.
+ */
+it('converts an escaped string inside a body without a deprecation', function () {
+    $json = null;
+
+    expect(errorLeakedBy(function () use (&$json): void {
+        $json = convertCustomObject(customObject('S:1:"\\78";'));
+    }))->toBeNull()
+        ->and($json)->toBe('{"contents":"x"}');
+});
+
+/**
  * Inside a custom body, PHP's value numbering already counts the object the body
  * belongs to, so `R:2` here names the contents array rather than the empty array
  * inside it. The body describes a value that contains itself, and `var_dump()` of

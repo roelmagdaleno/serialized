@@ -36,7 +36,8 @@ flowchart TD
 
     tokenizer["Tokenizer"] -- "Token[]" --> parser["Parser"]
     parser -- "ParsedPayload" --> policy["PayloadPolicy"]
-    policy -- "validated" --> unserializer["SafeUnserializer"]
+    policy -- "validated" --> rewriter["EscapedStringRewriter"]
+    rewriter -- "string" --> unserializer["SafeUnserializer"]
     unserializer -- "mixed" --> normalizer["ValueNormalizer"]
     normalizer -- "mixed" --> encoder["JsonEncoder"]
 
@@ -48,6 +49,7 @@ flowchart TD
 | `Tokenizer` | Lexes the payload into `Token[]` — type, offset, length. Lexes a byte range, so a `C:` body is lexed in place. Stops at `maxElements`, before the tokens are allocated. | Truncated tokens, bad length prefixes, unknown type letters, trailing bytes, element counts the remaining bytes cannot hold |
 | `Parser` | Validates structure and derives `ParsedPayload` — depth, element count, class names, flags. | Unbalanced braces, wrong element counts, non-scalar array keys |
 | `PayloadPolicy` | Applies `Options` against `ParsedPayload`. | Disallowed classes, references (`R:`/`r:`), non-UTF-8 strings, non-finite floats, depth |
+| `EscapedStringRewriter` | Writes each `S:` escaped string as the plain `s:` string it spells, `C:` bodies included, because PHP 8.4 deprecated reading `S:`. A payload without `S:` passes through untouched. See [ADR 0017](adr/0017-rewrite-escaped-strings-before-unserialize.md). | — |
 | `SafeUnserializer` | Calls `unserialize($payload, ['allowed_classes' => …])`. Wraps warnings as exceptions, never returns `false` silently; a notice or deprecation is left to PHP, not read as failure. | — |
 | `ValueNormalizer` | Turns objects into `stdClass` with demangled property names, so private and protected properties survive encoding. | — |
 | `JsonEncoder` | Calls `json_encode($value, $flags)`. | — |
@@ -176,6 +178,7 @@ src/
     JsonRepresentability.php              Rejects values JSON cannot carry
 
   Conversion/
+    EscapedStringRewriter.php             S: escaped strings → s:, so PHP never reads the deprecated form
     SafeUnserializer.php                  Wraps unserialize() + error handling
     ValueNormalizer.php                   Objects → stdClass, property names demangled
     JsonEncoder.php                       Wraps json_encode() + flag handling

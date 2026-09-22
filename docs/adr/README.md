@@ -25,3 +25,4 @@ project layout — belongs in [`docs/architecture.md`](../architecture.md), not 
 | [0014](0014-enforce-max-elements-while-lexing.md) | Enforce `maxElements` in the tokenizer, and keep offsets in `Token` |
 | [0015](0015-check-class-restorability.md) | Allowing a class is honoured only if PHP can actually restore it |
 | [0016](0016-diagnostic-code-owns-wording.md) | `DiagnosticCode` owns the default wording |
+| [0017](0017-rewrite-escaped-strings-before-unserialize.md) | Rewrite `S:` escaped strings to `s:` before `unserialize()` |
