@@ -74,13 +74,22 @@ final readonly class SerializedConverter
     /**
      * Unserializes a payload into its PHP value, stopping short of JSON encoding.
      *
-     * @throws SerializedException when the payload is malformed or unsafe
+     * Objects come back as PHP built them, unless objects are read as data: then every
+     * object comes back as a stdClass of its properties, so no incomplete object reaches
+     * the caller.
+     *
+     * @throws SerializedException when the payload is malformed, unsafe, or holds an object that contains itself
      */
     public function toArray(string $payload): mixed
     {
-        $this->validate($payload);
+        $parsed = $this->validate($payload);
+        $value = $this->unserialize($payload);
 
-        return $this->unserialize($payload);
+        if (! $this->options->objectsAsData) {
+            return $value;
+        }
+
+        return $this->normalizer->normalize($value, $payload, $parsed->referenceOffset);
     }
 
     /**
@@ -159,6 +168,18 @@ final readonly class SerializedConverter
     }
 
     /**
+     * Returns a converter that reads an object of a class not allowed as its properties.
+     *
+     * The class is never loaded or instantiated, so none of its code runs: PHP restores the
+     * object as an incomplete one, and the converter hands back a stdClass of its
+     * properties. Custom-serialized objects and enums are still refused unless allowed.
+     */
+    public function objectsAsData(): self
+    {
+        return $this->withOptions(objectsAsData: true);
+    }
+
+    /**
      * Returns a converter that rejects payloads longer than the given byte count.
      */
     public function withMaxBytes(int $maxBytes): self
@@ -191,7 +212,7 @@ final readonly class SerializedConverter
     {
         $this->policy->enforceByteLimit($payload, $this->options);
 
-        return $this->validateValue($payload, 0, strlen($payload), depthSpent: 0, elementsSpent: 0);
+        return $this->validateValue($payload, 0, strlen($payload), $this->options, depthSpent: 0, elementsSpent: 0);
     }
 
     /**
@@ -199,7 +220,8 @@ final readonly class SerializedConverter
      *
      * A custom-serialized body is itself a serialized payload that unserialize() hands
      * to the class, so it goes through the same three stages rather than being trusted
-     * for being opaque.
+     * for being opaque. It is never read with objects as data: the class may unserialize
+     * its body with its own allow-list, so every class the body names must be allowed.
      *
      * @throws SerializedException when any stage rejects the value
      */
@@ -207,6 +229,7 @@ final readonly class SerializedConverter
         string $payload,
         int $from,
         int $through,
+        Options $options,
         int $depthSpent,
         int $elementsSpent,
     ): ParsedPayload {
@@ -214,11 +237,11 @@ final readonly class SerializedConverter
             $payload,
             $from,
             $through,
-            maxElements: $this->options->maxElements - $elementsSpent,
+            maxElements: $options->maxElements - $elementsSpent,
         );
         $parsed = $this->parser->parse($payload, $tokens);
 
-        $this->policy->enforce($payload, $tokens, $parsed, $this->options, $depthSpent, $elementsSpent);
+        $this->policy->enforce($payload, $tokens, $parsed, $options, $depthSpent, $elementsSpent);
 
         foreach ($tokens as $token) {
             if ($token->type !== TokenType::CustomObject) {
@@ -231,6 +254,7 @@ final readonly class SerializedConverter
                 $payload,
                 $bodyStart,
                 $bodyStart + ($token->literalLength ?? 0),
+                $this->withOptions(objectsAsData: false)->options,
                 depthSpent: $depthSpent + $parsed->depth,
                 elementsSpent: $elementsSpent + $parsed->elementCount,
             )->elementCount;
@@ -250,6 +274,7 @@ final readonly class SerializedConverter
         ?int $maxElements = null,
         ?array $allowedClasses = null,
         ?int $jsonFlags = null,
+        ?bool $objectsAsData = null,
     ): self {
         return new self(
             new Options(
@@ -258,6 +283,7 @@ final readonly class SerializedConverter
                 maxElements: $maxElements ?? $this->options->maxElements,
                 allowedClasses: $allowedClasses ?? $this->options->allowedClasses,
                 jsonFlags: $jsonFlags ?? $this->options->jsonFlags,
+                objectsAsData: $objectsAsData ?? $this->options->objectsAsData,
             ),
             $this->tokenizer,
             $this->parser,

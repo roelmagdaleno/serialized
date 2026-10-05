@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Serialized\Conversion;
 
+use __PHP_Incomplete_Class;
 use ReflectionReference;
 use Serialized\Exceptions\UnrepresentableValueException;
 use Serialized\PropertyName;
@@ -15,7 +16,9 @@ use UnitEnum;
  *
  * json_encode() reads an object's public properties and silently drops the rest, so an
  * allow-listed value object encodes as `{}`. Every object becomes a stdClass carrying all
- * of its properties under their demangled names instead.
+ * of its properties under their demangled names instead. An object read as data arrives
+ * as an incomplete object, whose properties are read the same way under the class name
+ * the payload gave it.
  */
 final class ValueNormalizer
 {
@@ -25,7 +28,8 @@ final class ValueNormalizer
      * A back-reference has already been resolved by `unserialize()` into the value it
      * points at, so most of them need nothing here: the value is simply written out
      * again wherever it appears. One that points at an ancestor is different, because
-     * the structure it describes has no end. That case is caught on the way down rather
+     * the structure it describes has no end -- whether the ancestor is an array bound by
+     * `R:` or an object named again by `r:`. That case is caught on the way down rather
      * than left to `json_encode()`, which would report a recursion no byte can be
      * blamed for -- and rather than left to this walk, which would not return.
      *
@@ -42,8 +46,8 @@ final class ValueNormalizer
     /**
      * Rewrites one value, refusing any path that arrives back where it started.
      *
-     * `$openReferences` holds the reference ids on the path currently being walked, not
-     * every id seen. An id is dropped again on the way back up, so the same value
+     * `$openReferences` holds the reference and object ids on the path currently being
+     * walked, not every id seen. An id is dropped again on the way back up, so the same value
      * appearing twice side by side is written out twice, while a value appearing inside
      * itself is refused.
      *
@@ -105,9 +109,19 @@ final class ValueNormalizer
      * are all numeric still encodes as a JSON object rather than a JSON array.
      *
      * @param  array<string, true>  $openReferences
+     *
+     * @throws UnrepresentableValueException when the object contains itself
      */
     private function normalizeObject(object $object, string $payload, ?int $referenceOffset, array $openReferences): stdClass
     {
+        // Object ids and reference ids share one path; the prefix keeps them apart.
+        $id = 'object:'.spl_object_id($object);
+
+        if (isset($openReferences[$id])) {
+            throw UnrepresentableValueException::circularReference($payload, $referenceOffset ?? 0);
+        }
+
+        $openReferences[$id] = true;
         $properties = $this->describeProperties($object);
         $collidingNames = $this->collidingNames($properties);
         $normalized = new stdClass;
@@ -128,10 +142,19 @@ final class ValueNormalizer
      */
     private function describeProperties(object $object): array
     {
+        $storage = (array) $object;
+        $className = $object::class;
+
+        if ($object instanceof __PHP_Incomplete_Class) {
+            $marker = $storage[PropertyName::INCOMPLETE_CLASS_MARKER] ?? null;
+            $className = is_string($marker) ? $marker : $className;
+            unset($storage[PropertyName::INCOMPLETE_CLASS_MARKER]);
+        }
+
         $properties = [];
 
-        foreach ((array) $object as $key => $value) {
-            $propertyName = PropertyName::fromStorageKey((string) $key, $object::class);
+        foreach ($storage as $key => $value) {
+            $propertyName = PropertyName::fromStorageKey((string) $key, $className);
 
             $properties[] = ['name' => $propertyName->name, 'owner' => $propertyName->owner, 'value' => $value];
         }

@@ -9,7 +9,9 @@ use Serialized\Exceptions\UnrepresentableValueException;
 use Serialized\Exceptions\UnsafeSerializedDataException;
 use Serialized\Options;
 use Serialized\Parser\ParsedPayload;
+use Serialized\PropertyName;
 use Serialized\Tokenizer\Token;
+use Serialized\Tokenizer\TokenType;
 
 /**
  * Decides whether a payload the parser accepted is safe to hand to unserialize().
@@ -77,6 +79,10 @@ final readonly class PayloadPolicy
 
         foreach ($parsed->classNames as $named) {
             if (! $allowList->allows($named['className'])) {
+                if ($this->readsAsData($named['type'], $options)) {
+                    continue;
+                }
+
                 throw UnsafeSerializedDataException::disallowedClass($payload, $named['offset'], $named['className']);
             }
 
@@ -89,7 +95,42 @@ final readonly class PayloadPolicy
             }
         }
 
+        if ($options->objectsAsData) {
+            $this->rejectReservedPropertyNames($payload, $parsed->propertyNames);
+        }
+
         $this->representability->enforcePropertyNames($payload, $parsed->propertyNames);
         $this->representability->enforce($payload, $tokens);
+    }
+
+    /**
+     * Tells whether an object of a class not allowed is read as its properties instead.
+     *
+     * Only a plain `O:` object qualifies: PHP restores it as an incomplete object holding
+     * every property, without loading the class. A `C:` body is the class's own format and
+     * comes back empty, and an enum is looked up whatever allowed_classes says.
+     */
+    private function readsAsData(TokenType $type, Options $options): bool
+    {
+        return $options->objectsAsData && $type === TokenType::Object;
+    }
+
+    /**
+     * Rejects a property whose name PHP would write over an incomplete object's class name.
+     *
+     * @param  list<Token>  $propertyNames
+     *
+     * @throws UnrepresentableValueException when a property is named after the marker
+     */
+    private function rejectReservedPropertyNames(string $payload, array $propertyNames): void
+    {
+        foreach ($propertyNames as $token) {
+            if (PropertyName::isIncompleteClassMarker($token->literal())) {
+                throw UnrepresentableValueException::reservedPropertyName(
+                    $payload,
+                    $token->literalOffset ?? $token->offset,
+                );
+            }
+        }
     }
 }

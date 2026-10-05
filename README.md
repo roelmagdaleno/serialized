@@ -55,6 +55,7 @@ $json = $converter->toJson($payload);
 | `withMaxDepth()` | 64 | Rejects payloads nested deeper than this |
 | `withMaxElements()` | 1,000,000 | Rejects payloads holding more values than this |
 | `allowClasses()` | none | Permits objects of the given classes |
+| `objectsAsData()` | off | Reads an object of any other class as its properties, without building it |
 | `pretty()` / `compact()` | pretty | Multi-line or single-line JSON |
 | `withJsonFlags()` | — | Adds `json_encode` flags on top of the defaults |
 
@@ -144,6 +145,7 @@ Here is every code and the context it carries:
 | `NonUtf8String` | — |
 | `NonBackedEnum` | `caseName` |
 | `UnusablePropertyName` | — |
+| `ReservedPropertyName` | — |
 | `NonFiniteFloat` | `literal` |
 | `MaxBytesExceeded` | `actualBytes`, `configuredLimit` |
 | `MaxDepthExceeded` | `actualDepth`, `configuredLimit` |
@@ -155,7 +157,7 @@ Here is every code and the context it carries:
 |---|---|
 | `InvalidSerializedDataException` | The payload is malformed: truncated, wrong length, unbalanced braces, wrong element count, trailing bytes |
 | `UnsafeSerializedDataException` | An object of a class you have not allowed, or a class PHP cannot load or restore |
-| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case, or a value that contains itself |
+| `UnrepresentableValueException` | A value JSON cannot carry: a non-UTF-8 string, `NAN`, `INF`, `-INF`, a non-backed enum case, a value that contains itself, or a property named `__PHP_Incomplete_Class_Name` on an object read as data |
 | `LimitExceededException` | `maxBytes`, `maxDepth` or `maxElements` was exceeded |
 | `JsonEncodingException` | `json_encode` failed despite validation |
 
@@ -177,6 +179,23 @@ Serialized::toJson('O:8:"stdClass":0:{}');
 Serialized::make()->allowClasses([stdClass::class])->toJson('O:8:"stdClass":0:{}');
 // {}
 ```
+
+### Reading objects as data
+
+Usually you want an object's properties, not the object. `objectsAsData()` converts an object of
+any class that is not on the allow list without loading or building that class. None of its code
+runs, and private and protected properties come back under their plain names:
+
+```php
+Serialized::make()->objectsAsData()->toJson('O:4:"User":1:{s:4:"name";s:3:"Ada";}');
+// {
+//     "name": "Ada"
+// }
+```
+
+In this mode `toArray()` also returns every object as a `stdClass` of its properties. Classes on
+the allow list are still built for real first. Custom-serialized objects (`C:`) and enums are
+still refused unless you allow their class.
 
 The full model is in [SECURITY.md](SECURITY.md).
 

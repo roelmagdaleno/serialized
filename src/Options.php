@@ -22,6 +22,7 @@ final readonly class Options
 
     /**
      * @param  list<class-string>  $allowedClasses  classes the caller trusts enough to unserialize
+     * @param  bool  $objectsAsData  whether an object of a class not allowed is read as its properties rather than refused
      */
     public function __construct(
         public int $maxBytes = self::DEFAULT_MAX_BYTES,
@@ -29,5 +30,6 @@ final readonly class Options
         public int $maxElements = self::DEFAULT_MAX_ELEMENTS,
         public array $allowedClasses = [],
         public int $jsonFlags = self::DEFAULT_JSON_FLAGS,
+        public bool $objectsAsData = false,
     ) {}
 }

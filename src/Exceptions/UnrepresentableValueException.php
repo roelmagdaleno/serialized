@@ -53,6 +53,21 @@ final class UnrepresentableValueException extends RuntimeException implements Se
     }
 
     /**
+     * A property of an object read as data carries the name PHP keeps its class name under.
+     *
+     * PHP writes the property's value over the class name, so the two cannot be told apart
+     * and either the property or the qualification of its siblings would be lost.
+     */
+    public static function reservedPropertyName(string $payload, int $offset): self
+    {
+        return self::fromDiagnostic(new Diagnostic(
+            code: DiagnosticCode::ReservedPropertyName,
+            payload: $payload,
+            offset: $offset,
+        ));
+    }
+
+    /**
      * A float is NAN or infinite, neither of which JSON can express.
      */
     public static function nonFiniteFloat(string $payload, int $offset, string $literal): self

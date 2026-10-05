@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Serialized\Diagnostics;
 
+use Serialized\PropertyName;
+
 /**
  * Every way a payload can be refused, and the default wording for each one.
  *
@@ -37,6 +39,7 @@ enum DiagnosticCode: string
     case NonUtf8String = 'non_utf8_string';
     case NonBackedEnum = 'non_backed_enum';
     case UnusablePropertyName = 'unusable_property_name';
+    case ReservedPropertyName = 'reserved_property_name';
     case NonFiniteFloat = 'non_finite_float';
     case MaxBytesExceeded = 'max_bytes_exceeded';
     case MaxDepthExceeded = 'max_depth_exceeded';
@@ -167,6 +170,11 @@ enum DiagnosticCode: string
                 'The property name at offset %d holds a NUL byte that is not PHP\'s private or protected spelling.',
                 $offset,
             ),
+            self::ReservedPropertyName => sprintf(
+                'The property name at offset %d is %s, where PHP keeps the class name of an object it reads as data.',
+                $offset,
+                PropertyName::INCOMPLETE_CLASS_MARKER,
+            ),
             self::NonFiniteFloat => sprintf(
                 'Float %s at offset %d has no JSON representation.',
                 $this->stringFrom($context, 'literal'),
@@ -251,6 +259,7 @@ enum DiagnosticCode: string
             self::NonUtf8String => 'Base64-encode this value before serializing it, or repair its encoding.',
             self::NonBackedEnum => 'Give the enum a backing type, or replace the case with a string before serializing.',
             self::UnusablePropertyName => 'Remove the NUL byte from the property name, or drop the property before serializing.',
+            self::ReservedPropertyName => 'Rename the property before serializing, or convert without ->objectsAsData() and allow the class instead.',
             self::NonFiniteFloat => 'Replace the value with null, a string, or a finite number before serializing.',
             self::MaxBytesExceeded => sprintf(
                 'Raise the limit with ->withMaxBytes(%d), or convert a smaller payload.',

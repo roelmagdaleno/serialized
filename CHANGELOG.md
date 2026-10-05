@@ -7,6 +7,11 @@ All notable changes to this project are documented here. This project follows
 
 ### Added
 
+- `objectsAsData()` converts an object of a class that is not on the allow list into its
+  properties, without loading or building the class, so no magic method runs. `toArray()`
+  returns such objects as `stdClass`. `C:` objects and enums are still refused unless allowed. A
+  property named `__PHP_Incomplete_Class_Name` is refused with the new
+  `DiagnosticCode::ReservedPropertyName`, because PHP would overwrite the class name with it.
 - `Diagnostic` carries a `DiagnosticCode` and a `context` map, so a consumer can tell which
   failure it caught without matching on English and can word its own message from the facts
   behind ours — `declaredByteLength`, `foundByteLength`, `className`, `configuredLimit` and the
@@ -25,6 +30,9 @@ All notable changes to this project are documented here. This project follows
 
 ### Fixed
 
+- An object that contains itself (`O:8:"stdClass":1:{s:4:"self";r:1;}` with `stdClass` allowed)
+  no longer crashes the process. `ValueNormalizer` walked it until the stack overflowed; it now
+  refuses it as `ContainsReference` with the reference's offset, as it already did for arrays.
 - A payload holding an `S:` escaped string no longer raises PHP 8.4's "Unserializing the 'S'
   format is deprecated" notice. The tokenizer already read the form, but the original bytes were
   handed to `unserialize()`, and the deprecation reached the caller's error handler. Each `S:`
