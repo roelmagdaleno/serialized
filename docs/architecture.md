@@ -51,12 +51,14 @@ flowchart TD
 | `PayloadPolicy` | Applies `Options` against `ParsedPayload`. | Disallowed classes, references (`R:`/`r:`), non-UTF-8 strings, non-finite floats, depth |
 | `EscapedStringRewriter` | Writes each `S:` escaped string as the plain `s:` string it spells, `C:` bodies included, because PHP 8.4 deprecated reading `S:`. A payload without `S:` passes through untouched. See [ADR 0017](adr/0017-rewrite-escaped-strings-before-unserialize.md). | — |
 | `SafeUnserializer` | Calls `unserialize($payload, ['allowed_classes' => …])`. Wraps warnings as exceptions, never returns `false` silently; a notice or deprecation is left to PHP, not read as failure. | — |
-| `ValueNormalizer` | Turns objects into `stdClass` with demangled property names, so private and protected properties survive encoding. | — |
+| `ValueNormalizer` | Turns objects into `stdClass` with demangled property names, so private and protected properties survive encoding. An object read as data arrives incomplete and is read under the class name the payload gave it. | An object that contains itself |
 | `JsonEncoder` | Calls `json_encode($value, $flags)`. | — |
 
 `isValid()` stops after `PayloadPolicy`. `toArray()` stops after `SafeUnserializer` — it returns
 the PHP value as PHP built it, objects and all, so a caller that wants the real object graph gets
-it. Normalization is on the JSON path only.
+it. Normalization is on the JSON path only. With `objectsAsData()`, `toArray()` also runs
+`ValueNormalizer`, so every object comes back as a `stdClass` and no incomplete object reaches the
+caller. See [ADR 0018](adr/0018-read-unlisted-objects-as-data.md).
 
 `Serialized` is a thin delegator; all behaviour lives in `SerializedConverter`, which is
 `readonly` and fluent. Every `with*`/`allow*`/`compact`/`pretty` method returns a new instance, so
@@ -99,6 +101,8 @@ central promise, "show me what is in this payload", answered with an empty objec
 5. Arrays are walked recursively; scalars are returned as they are. Recursion terminates because a
    cycle can only be serialized as `r:` or `R:`, which `PayloadPolicy` rejects wherever it appears.
 6. The class name is not added to the output.
+7. An object is tracked on the path being walked, like a reference, so an object that contains
+   itself is refused rather than walked until the stack runs out.
 
 Each of these is an ADR: [0005](adr/0005-normalize-objects-to-stdclass.md),
 [0011](adr/0011-reject-unusable-property-names.md),
@@ -113,7 +117,8 @@ these classes is a change to the security model.
 | Guarantee | Enforced by |
 |---|---|
 | `allowed_classes` is never `true`, and reaches PHP in one normalized spelling | `ClassAllowList` |
-| Objects and enums are rejected before `unserialize()` runs | `PayloadPolicy` |
+| Objects and enums are rejected before `unserialize()` runs, except a plain object read as data, whose class is never loaded | `PayloadPolicy` |
+| A property named `__PHP_Incomplete_Class_Name` is refused when objects are read as data | `PayloadPolicy` |
 | An allow-listed class PHP cannot load or rebuild is refused | `ClassRestorability` |
 | References (`R:`/`r:`) are refused wherever they appear | `PayloadPolicy` |
 | Values JSON cannot carry are refused | `JsonRepresentability` |

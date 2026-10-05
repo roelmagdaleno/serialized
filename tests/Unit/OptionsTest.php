@@ -12,6 +12,7 @@ it('ships the documented defaults', function () {
         ->and($options->maxDepth)->toBe(64)
         ->and($options->maxElements)->toBe(1_000_000)
         ->and($options->allowedClasses)->toBe([])
+        ->and($options->objectsAsData)->toBeFalse()
         ->and($options->jsonFlags)->toBe(
             JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
         );
@@ -52,4 +53,14 @@ it('returns a new instance from every output option', function () {
         ->and($original->pretty())->not->toBe($original)
         ->and($original->withJsonFlags(JSON_FORCE_OBJECT))->not->toBe($original)
         ->and($original->options()->jsonFlags)->toBe(new Options()->jsonFlags);
+});
+
+it('reads objects as data only once asked to', function () {
+    $original = Serialized::make();
+    $converter = $original->objectsAsData();
+
+    expect($converter)->not->toBe($original)
+        ->and($converter->options()->objectsAsData)->toBeTrue()
+        ->and($original->options()->objectsAsData)->toBeFalse()
+        ->and($converter->compact()->withMaxDepth(8)->options()->objectsAsData)->toBeTrue();
 });

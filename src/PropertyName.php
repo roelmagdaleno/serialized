@@ -13,6 +13,11 @@ namespace Serialized;
  */
 final readonly class PropertyName
 {
+    /**
+     * The storage key under which PHP keeps the class name of an object it did not build.
+     */
+    public const string INCOMPLETE_CLASS_MARKER = '__PHP_Incomplete_Class_Name';
+
     private function __construct(
         public string $owner,
         public string $name,
@@ -42,5 +47,13 @@ final readonly class PropertyName
     public function isRepresentable(): bool
     {
         return ! str_contains($this->name, "\x00");
+    }
+
+    /**
+     * Tells whether a storage key is the one PHP keeps an incomplete object's class name under.
+     */
+    public static function isIncompleteClassMarker(string $storageKey): bool
+    {
+        return $storageKey === self::INCOMPLETE_CLASS_MARKER;
     }
 }

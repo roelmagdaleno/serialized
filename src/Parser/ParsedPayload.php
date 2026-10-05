@@ -20,7 +20,7 @@ final readonly class ParsedPayload
      * @param  int  $elementCount  total values in the payload, keys included
      * @param  list<array{className: string, offset: int, type: TokenType}>  $classNames  every class named by the payload
      * @param  int|null  $referenceOffset  byte position of the first R: or r: token, null when there is none
-     * @param  list<Token>  $propertyNames  object property names holding a NUL, which the policy reads closely
+     * @param  list<Token>  $propertyNames  object property names holding a NUL or spelling the incomplete-class marker, which the policy reads closely
      */
     public function __construct(
         public int $depth,

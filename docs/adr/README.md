@@ -26,3 +26,4 @@ project layout — belongs in [`docs/architecture.md`](../architecture.md), not 
 | [0015](0015-check-class-restorability.md) | Allowing a class is honoured only if PHP can actually restore it |
 | [0016](0016-diagnostic-code-owns-wording.md) | `DiagnosticCode` owns the default wording |
 | [0017](0017-rewrite-escaped-strings-before-unserialize.md) | Rewrite `S:` escaped strings to `s:` before `unserialize()` |
+| [0018](0018-read-unlisted-objects-as-data.md) | Read objects of unlisted classes as data, on request |

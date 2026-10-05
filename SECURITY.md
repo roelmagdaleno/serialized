@@ -16,7 +16,8 @@ This package exists to run `unserialize()` on data you do not trust. Five rules 
    separator, and a package that passed your spelling through would quietly allow neither.
 2. **Objects are rejected before `unserialize()` runs.** The payload is tokenized first; if it
    names a class you have not allowed, it is refused without PHP ever seeing it. A
-   `__PHP_Incomplete_Class` can never reach your code.
+   `__PHP_Incomplete_Class` can never reach your code. The one exception is opt-in, and it
+   builds nothing: see [Reading objects as data](#reading-objects-as-data).
 3. **No `__wakeup()` or `__destruct()` fires for a class you did not name.** Enums and
    custom-serialized objects (`C:`) are governed by the same allow-list as `O:` objects, and a
    `C:` body is validated as a payload in its own right — a class it names must be allowed too,
@@ -40,6 +41,24 @@ A `C:` body is validated before `unserialize()` sees it, but what the class then
 bytes is the class's own business: one whose `unserialize()` re-enters `unserialize()` with
 `allowed_classes => true` is choosing to ignore the restriction, and no caller-side check can stop
 it.
+
+## Reading objects as data
+
+`objectsAsData()` lets a plain `O:` object of a class you have not allowed reach `unserialize()`.
+`allowed_classes` stays `false` for that class, so PHP restores the object as a
+`__PHP_Incomplete_Class` without loading the class: no autoloader, no
+`unserialize_callback_func`, and no `__wakeup()`, `__unserialize()` or `__destruct()`. The package
+then turns the incomplete object into a `stdClass` of its properties, from `toArray()` as well as
+`toJson()`, so rule 2's promise still holds: an incomplete object never reaches your code.
+
+This mode does not widen anything else:
+
+- `C:` objects and enums still need their class on the allow list.
+- A `C:` body never reads objects as data. Every class it names must be allowed, because the
+  class that owns the body may unserialize it under its own options.
+- A property named `__PHP_Incomplete_Class_Name` is refused. PHP stores the class name under
+  that key, so the property would overwrite it.
+- An object that contains itself is refused, rather than walked without end.
 
 ## Supported versions
 

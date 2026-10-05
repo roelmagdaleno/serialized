@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Serialized\Parser;
 
 use Serialized\Exceptions\InvalidSerializedDataException;
+use Serialized\PropertyName;
 use Serialized\Tokenizer\Token;
 use Serialized\Tokenizer\TokenType;
 
@@ -44,7 +45,7 @@ final class Parser
 
             $currentStructure = $this->innermostFrame($openStructures);
 
-            if ($this->isPropertyNameHoldingNul($currentStructure, $token)) {
+            if ($this->isPropertyNameToInspect($currentStructure, $token)) {
                 $propertyNames[] = $token;
             }
 
@@ -119,19 +120,25 @@ final class Parser
     }
 
     /**
-     * Tells whether a token names an object property and holds a NUL byte.
+     * Tells whether a token names an object property the policy has to read closely.
      *
      * Structure is what the parser can see and the policy cannot: only a key slot of an
      * object is a property name. Whether such a name is usable is the policy's call, so
-     * this narrows rather than decides — a private or protected name holds NULs too.
+     * this narrows rather than decides — a private or protected name holds NULs too, and
+     * the incomplete-class marker is only refused when objects are read as data.
      */
-    private function isPropertyNameHoldingNul(?StructureFrame $currentStructure, Token $token): bool
+    private function isPropertyNameToInspect(?StructureFrame $currentStructure, Token $token): bool
     {
-        return $currentStructure !== null
-            && $currentStructure->token->type === TokenType::Object
-            && $currentStructure->expectsKey()
-            && $token->type === TokenType::String
-            && str_contains($token->literal(), "\x00");
+        if ($currentStructure === null
+            || $currentStructure->token->type !== TokenType::Object
+            || ! $currentStructure->expectsKey()
+            || $token->type !== TokenType::String) {
+            return false;
+        }
+
+        $literal = $token->literal();
+
+        return str_contains($literal, "\x00") || PropertyName::isIncompleteClassMarker($literal);
     }
 
     /**

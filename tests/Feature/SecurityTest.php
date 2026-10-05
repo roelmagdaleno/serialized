@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Serialized\Diagnostics\DiagnosticCode;
 use Serialized\Exceptions\UnsafeSerializedDataException;
 use Serialized\Serialized;
 
@@ -80,6 +81,15 @@ it('refuses a reference that makes the value contain itself', function () {
 
     expect($diagnostic->reason)->toContain('never ends')
         ->and($diagnostic->fix)->not->toBeEmpty();
+});
+
+it('refuses an allowed object that contains itself rather than recursing without end', function () {
+    $diagnostic = diagnosticFor(
+        fn () => Serialized::make()->allowClasses([stdClass::class])->toJson('O:8:"stdClass":1:{s:4:"self";r:1;}'),
+    );
+
+    expect($diagnostic->code)->toBe(DiagnosticCode::ContainsReference)
+        ->and($diagnostic->offset)->toBe(29);
 });
 
 it('never produces an incomplete class for any input', function (string $payload) {
